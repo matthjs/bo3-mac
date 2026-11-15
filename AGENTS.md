@@ -157,8 +157,11 @@ installer menu, which is handy for testing outside the launcher.
 - **Workshop uninstall** must unsubscribe through Steam (`SteamUnsubscriber`)
   before deleting files. Otherwise Steam downloads the mod again.
 - **The BO3MacFix fork** stays LGPL 2.1 with its source published. Keep the diff
-  from upstream small (it currently changes branding and window titles), and
-  credit upstream.
+  from upstream small, and credit upstream. It currently changes branding and
+  window titles, and fixes map conversion (`posix_spawn` instead of a shell
+  command built from the map name, the converter's output read to the end,
+  reconversion when a map's navmesh hash changes) plus a few small memory and
+  string bugs. Those fixes are worth offering upstream.
 - The launcher is not sandboxed (the entitlements are empty) and uses hardened
   runtime only in Release. The game is launched unhardened, which is what makes
   `DYLD_INSERT_LIBRARIES` work.

@@ -138,8 +138,9 @@ swap. The original repository has no license file.
 `vendor/BO3MacFix-src/` is a fork of
 [InvoxiPlayGames/BO3MacFix](https://github.com/InvoxiPlayGames/BO3MacFix),
 licensed under the **LGPL 2.1** (see `vendor/BO3MacFix-src/LICENSE.txt`). The
-fork changes the in-game watermark branding only; the source is published here
-to satisfy the license. All the patching work is theirs.
+fork changes the in-game watermark branding and fixes a few bugs in custom map
+conversion; the source is published here to satisfy the license. All the
+patching work is theirs.
 
 Credit also to Alyssa / alltheamps for t7patch and the cod2map64 patch, and to
 [Dobby](https://github.com/jmpews/Dobby) for the macOS code hooking. The Wine
