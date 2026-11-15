@@ -59,8 +59,8 @@ Prerequisites: Xcode, `xcodegen` (`brew install xcodegen`). The `.xcodeproj` is
 generated and git-ignored, so edit `project.yml` and never the project file.
 
 ```bash
-# 1. Once, or whenever vendor/BO3MacFix-src changes. Needs upstream's release tar
-#    at vendor/BO3MacFix-src/BO3MacFix-upstream.tar (or pass a path).
+# 1. Once, or whenever vendor/BO3MacFix-src changes. Downloads upstream's pinned
+#    release tar (checksum-verified) on first run, or pass a path to one.
 ./scripts/build-macfix-payload.sh
 
 # 2. Debug build + open
@@ -73,10 +73,11 @@ generated and git-ignored, so edit `project.yml` and never the project file.
 - The Xcode post-build phases build the rumble shim and `steam-unsub` **from
   source** every time and copy `Resources/BO3MacFix.tar.gz` in. The build fails
   if the payload tarball hasn't been generated.
-- `scripts/build-macfix-payload.sh` signs with a hardcoded Developer ID and
-  fails without that identity in the keychain. `rumble-shim/build.sh` falls back
-  to ad-hoc signing. Ad-hoc is fine for local runs. Notarization requires the
-  Developer ID on every binary, including the ones inside the tarball.
+- `scripts/build-macfix-payload.sh`, `rumble-shim/build.sh` and
+  `build-and-run.sh` sign with the maintainer's identity when it's in the
+  keychain and fall back to ad-hoc signing otherwise. Ad-hoc is fine for local
+  runs. Notarization requires the Developer ID on every binary, including the
+  ones inside the tarball.
 - `./release.sh` archives, signs, notarizes (keychain profile `notarytool-profile`),
   staples, and writes `build/BO3-Launcher.zip`. It's maintainer-only.
 
