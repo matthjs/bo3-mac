@@ -49,7 +49,9 @@ not "fix" these to arm64 or universal.
    - `DYLD_INSERT_LIBRARIES=<BO3MacFix.dylib>:<DualSenseRumble.dylib>[:existing]`
    - `WINEPREFIX=<game>/BO3MacFix/pfx`, `SteamAppId=311210`
    - `BO3MACFIX_OFFLINE=1` for "launch without Steam" / non-Steam installs
-5. Fallbacks: run `Install_BO3MacFix 9`, then `steam://rungameid/311210`.
+5. Fallback: `steam://rungameid/311210`. Don't run `Install_BO3MacFix` from the
+   launcher: it ignores arguments and reads its menu from stdin, which is empty
+   there, so it spins redrawing the menu forever.
 6. `LoadingOverlay` covers the black gap until the game window appears.
    `ControllerManager` is suspended while the game runs and resumed on exit.
 
@@ -157,11 +159,14 @@ installer menu, which is handy for testing outside the launcher.
 - **Workshop uninstall** must unsubscribe through Steam (`SteamUnsubscriber`)
   before deleting files. Otherwise Steam downloads the mod again.
 - **The BO3MacFix fork** stays LGPL 2.1 with its source published. Keep the diff
-  from upstream small, and credit upstream. It currently changes branding and
-  window titles, and fixes map conversion (`posix_spawn` instead of a shell
-  command built from the map name, the converter's output read to the end,
-  reconversion when a map's navmesh hash changes) plus a few small memory and
-  string bugs. Those fixes are worth offering upstream.
+  from upstream small, and credit upstream. It's built from upstream's master
+  (1.2-beta3 plus unreleased window-title and menu-bar work). On top of that it
+  changes branding, adds offline mode (`steam_emu.c`, a stand-in Steam API used
+  by "launch without Steam" and non-Steam installs), and fixes map conversion
+  (`posix_spawn` instead of a shell command built from the map name, the
+  converter's output read to the end, reconversion when a map's navmesh hash
+  changes) plus a few small memory and string bugs. Those fixes are worth
+  offering upstream.
 - The launcher is not sandboxed (the entitlements are empty) and uses hardened
   runtime only in Release. The game is launched unhardened, which is what makes
   `DYLD_INSERT_LIBRARIES` work.
