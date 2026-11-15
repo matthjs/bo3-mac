@@ -11,6 +11,18 @@ struct GameLauncher {
         set { UserDefaults.standard.set(newValue, forKey: offlineModeKey) }
     }
 
+    static let friendsOnlyKey = "friendsOnlyMessages"
+
+    /// BO3MacFix's `BO3MACFIX_FRIENDSONLY`: drops the game's instant messages
+    /// (invites and the like, sent through Activision's service) from anyone
+    /// who isn't a Steam friend. Past BO3 exploits arrived that way. Off by
+    /// default, since it isn't known which features rely on messages from
+    /// strangers. It does not make a lobby private.
+    static var friendsOnlyMessages: Bool {
+        get { UserDefaults.standard.bool(forKey: friendsOnlyKey) }
+        set { UserDefaults.standard.set(newValue, forKey: friendsOnlyKey) }
+    }
+
     static func launch() {
         guard MacFixInstaller.isGamePresent else {
             MacFixInstaller.promptInstallIfNeeded()
@@ -65,6 +77,9 @@ struct GameLauncher {
         setWinePath(&env)
         if launchWithoutSteam {
             env["BO3MACFIX_OFFLINE"] = "1"
+        }
+        if friendsOnlyMessages {
+            env["BO3MACFIX_FRIENDSONLY"] = "1"
         }
 
         let pid = spawnDetached(exe: gameExe, dir: gameDir, env: env)

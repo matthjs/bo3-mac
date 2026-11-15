@@ -5,6 +5,7 @@ struct HeaderView: View {
     var gameMissing: Bool = false
     @ObservedObject private var controller = ControllerManager.shared
     @ObservedObject private var wine = WineInstaller.shared
+    @AppStorage(GameLauncher.friendsOnlyKey) private var friendsOnly = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -248,6 +249,9 @@ struct HeaderView: View {
                     wine.promptInstall()
                 }
             }
+            Divider()
+            Toggle("Friends-Only Messages", isOn: $friendsOnly)
+                .help("Blocks in-game messages, such as invites, from players who aren't your Steam friends. Applies from the next launch.")
             Divider()
             if GameLauncher.isSteamIntegrated {
                 Button("Remove Steam Integration") {
