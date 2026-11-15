@@ -5,9 +5,7 @@ enum Paths {
     private static let home = FileManager.default.homeDirectoryForCurrentUser.path
     private static let defaultSteamApps = home + "/Library/Application Support/Steam/steamapps"
     private static let defaultBo3Root = defaultSteamApps + "/common/Call of Duty Black Ops III"
-    static let defaultSteamCommon = defaultSteamApps + "/common"
     static let nonSteamDefault = home + "/Documents/Call of Duty Black Ops III"
-    static let nonSteamParent = home + "/Documents"
     private static let customPathKey = "customBO3Path"
 
     enum InstallType {
@@ -47,21 +45,6 @@ enum Paths {
             return nonSteamDefault
         }
         return defaultBo3Root
-    }
-
-    /// The parent folder that `tar xf` should extract into.
-    /// The archive contains "Call of Duty Black Ops III/" at the root,
-    /// so extracting to the parent creates the game folder.
-    static var extractionParent: String {
-        if let custom = UserDefaults.standard.string(forKey: customPathKey),
-           !custom.isEmpty {
-            return (custom as NSString).deletingLastPathComponent
-        }
-        switch installType {
-        case .steam: return defaultSteamCommon
-        case .nonSteam: return nonSteamParent
-        case .none: return nonSteamParent
-        }
     }
 
     static var macFixBinary: String { bo3Root + "/BO3MacFix/Install_BO3MacFix" }

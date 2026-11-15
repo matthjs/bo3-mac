@@ -2,9 +2,8 @@ import SwiftUI
 
 struct HeaderView: View {
     @Binding var selectedTab: LauncherTab
-    var showDownloadAction: Bool = false
+    var gameMissing: Bool = false
     @ObservedObject private var controller = ControllerManager.shared
-    @ObservedObject private var downloader = GameDownloader.shared
     @ObservedObject private var wine = WineInstaller.shared
 
     var body: some View {
@@ -25,8 +24,8 @@ struct HeaderView: View {
                 if wine.isBusy {
                     wineStatusBadge
                 }
-                if showDownloadAction {
-                    downloadStatusBadge
+                if gameMissing {
+                    gameMissingBadge
                 } else {
                     installTypeBadge
 
@@ -212,62 +211,14 @@ struct HeaderView: View {
         .cornerRadius(4)
     }
 
-    private var downloadStatusBadge: some View {
-        Group {
-            switch downloader.phase {
-            case .idle:
-                Text("GAME NOT INSTALLED")
-                    .font(.system(size: 11, weight: .heavy))
-                    .foregroundColor(Theme.orange)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Theme.orange.opacity(0.15))
-                    .cornerRadius(4)
-            case .downloading:
-                HStack(spacing: 8) {
-                    ProgressView(value: downloader.overallProgress)
-                        .progressViewStyle(.linear)
-                        .tint(Theme.orange)
-                        .frame(width: 80)
-                    Text("\(downloader.completedChunkCount)/\(downloader.totalChunkCount)")
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
-                        .foregroundColor(Theme.textSecondary)
-                    if !downloader.speedText.isEmpty {
-                        Text(downloader.speedText)
-                            .font(.system(size: 10, weight: .medium, design: .monospaced))
-                            .foregroundColor(Theme.orange)
-                    }
-                }
-            case .paused:
-                HStack(spacing: 6) {
-                    Image(systemName: "pause.fill")
-                        .font(.system(size: 9))
-                        .foregroundColor(Theme.orange)
-                    Text("PAUSED \(downloader.completedChunkCount)/\(downloader.totalChunkCount)")
-                        .font(.system(size: 11, weight: .heavy))
-                        .foregroundColor(Theme.orange)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(Theme.orange.opacity(0.15))
-                .cornerRadius(4)
-            case .decompressing:
-                HStack(spacing: 6) {
-                    ProgressView()
-                        .scaleEffect(0.6)
-                        .tint(Theme.orange)
-                    Text("Extracting...")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(Theme.textSecondary)
-                }
-            case .finished:
-                Text("DOWNLOAD COMPLETE")
-                    .font(.system(size: 11, weight: .heavy))
-                    .foregroundColor(.green)
-            default:
-                EmptyView()
-            }
-        }
+    private var gameMissingBadge: some View {
+        Text("GAME NOT INSTALLED")
+            .font(.system(size: 11, weight: .heavy))
+            .foregroundColor(Theme.orange)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Theme.orange.opacity(0.15))
+            .cornerRadius(4)
     }
 
     private var optionsMenu: some View {
@@ -287,11 +238,6 @@ struct HeaderView: View {
                 }
             }
             Divider()
-            if Paths.installType == .none {
-                Button("Download Game...") {
-                    downloader.startDownload(to: Paths.nonSteamParent)
-                }
-            }
             if !MacFixInstaller.isInstalled {
                 Button("Install BO3MacFix...") {
                     MacFixInstaller.promptInstallIfNeeded()
@@ -330,7 +276,6 @@ struct HeaderView: View {
 
 enum LauncherTab: String, CaseIterable, Identifiable {
     case whatsNew = "What's New"
-    case dlc = "Downloadable Content"
     case mods = "Mods"
 
     var id: String { rawValue }
