@@ -14,7 +14,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         AccountGate.enforce()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             PermissionChecker.promptIfNeeded()
-            MacFixInstaller.promptInstallIfNeeded()
+            // Without the game, the setup screen already says so. Prompting
+            // here too would open with a "Game Not Found" dialog.
+            if MacFixInstaller.isGamePresent {
+                MacFixInstaller.promptInstallIfNeeded()
+            }
             GameLauncher.resumeSteamIntegrationIfNeeded()
         }
         menuObserver = NotificationCenter.default.addObserver(
