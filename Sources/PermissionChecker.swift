@@ -1,20 +1,14 @@
 import Foundation
 import AppKit
-import CoreGraphics
+import IOKit.hid
 
 struct PermissionChecker {
     private static let hasPromptedKey = "hasPromptedInputMonitoring"
 
+    /// Asks macOS directly. This used to create a keyboard event tap to see
+    /// whether that succeeded, and never released it.
     static var hasInputMonitoring: Bool {
-        let tap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .listenOnly,
-            eventsOfInterest: CGEventMask(1 << CGEventType.keyDown.rawValue),
-            callback: { _, _, event, _ in Unmanaged.passRetained(event) },
-            userInfo: nil
-        )
-        return tap != nil
+        IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted
     }
 
     static func promptIfNeeded() {
