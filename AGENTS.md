@@ -174,7 +174,7 @@ installer menu, which is handy for testing outside the launcher.
 | `ControllerManager.swift`, `FocusManager.swift` | GameController navigation of the launcher UI |
 | `LoadingOverlay.swift` | Full-screen cover until the game window appears (240 s timeout) |
 | `UpdateChecker.swift`, `AccountGate.swift` | Remote version feed and the dormant sign-in policy switch |
-| `AppMover.swift`, `PermissionChecker.swift` | Move to /Applications, removable-volume access prompt |
+| `AppMover.swift`, `PermissionChecker.swift` | Move to /Applications, Input Monitoring permission prompt |
 | `WhatsNewView.swift`, `SteamWebView.swift`, `SetupView.swift`, `Theme.swift` | UI |
 
 ## Style
