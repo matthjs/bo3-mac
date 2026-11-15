@@ -147,13 +147,21 @@ struct GameLauncher {
         }
     }
 
-    static var isGameInstalled: Bool {
-        FileManager.default.fileExists(atPath: Paths.macFixBinary)
+    private static var appBundleExePath: String { Paths.bo3Root + "/CoDBlkOps3.app/Contents/MacOS/AppBundleExe" }
+    private static var appBundleExeBackupPath: String { Paths.bo3Root + "/CoDBlkOps3.app/Contents/MacOS/AppBundleExe_original" }
+
+    /// Checks the executable itself, not just the backup. Verifying the game
+    /// in Steam restores the original `AppBundleExe` and leaves the backup
+    /// behind, and a backup-only check kept reporting integration as on.
+    static var isSteamIntegrated: Bool {
+        isRedirector(appBundleExePath)
     }
 
-    static var isSteamIntegrated: Bool {
-        let backupPath = Paths.bo3Root + "/CoDBlkOps3.app/Contents/MacOS/AppBundleExe_original"
-        return FileManager.default.fileExists(atPath: backupPath)
+    /// Every build of the redirector, including the ones older launchers
+    /// compiled on the player's Mac, carries this message. Aspyr's launcher doesn't.
+    private static func isRedirector(_ path: String) -> Bool {
+        guard let data = FileManager.default.contents(atPath: path) else { return false }
+        return data.range(of: Data("BO3 Launcher.app not found".utf8)) != nil
     }
 
     private static let pendingSteamIntegrationKey = "pendingSteamIntegration"
@@ -180,8 +188,9 @@ struct GameLauncher {
             }
         }
 
-        let appBundleExe = Paths.bo3Root + "/CoDBlkOps3.app/Contents/MacOS/AppBundleExe"
-        let backupPath = Paths.bo3Root + "/CoDBlkOps3.app/Contents/MacOS/AppBundleExe_original"
+        let fm = FileManager.default
+        let appBundleExe = appBundleExePath
+        let backupPath = appBundleExeBackupPath
 
         // Prebuilt and signed with the app. It used to be compiled with clang
         // on the player's Mac, which failed for anyone without Xcode's command
@@ -191,10 +200,15 @@ struct GameLauncher {
             return
         }
 
-        // Back up original (only if not already backed up)
-        if !FileManager.default.fileExists(atPath: backupPath) {
+        // Back up the original. If Steam restored or updated it since an
+        // earlier install, the file in place is the newer original, so it
+        // replaces the old backup.
+        if fm.fileExists(atPath: appBundleExe) && !isRedirector(appBundleExe) {
             do {
-                try FileManager.default.moveItem(atPath: appBundleExe, toPath: backupPath)
+                if fm.fileExists(atPath: backupPath) {
+                    try fm.removeItem(atPath: backupPath)
+                }
+                try fm.moveItem(atPath: appBundleExe, toPath: backupPath)
             } catch let error as NSError {
                 showAlert("Backup Failed", permissionMessage(for: error, path: appBundleExe))
                 return
@@ -203,10 +217,10 @@ struct GameLauncher {
 
         // Copy redirector
         do {
-            if FileManager.default.fileExists(atPath: appBundleExe) {
-                try FileManager.default.removeItem(atPath: appBundleExe)
+            if fm.fileExists(atPath: appBundleExe) {
+                try fm.removeItem(atPath: appBundleExe)
             }
-            try FileManager.default.copyItem(atPath: builtRedirector, toPath: appBundleExe)
+            try fm.copyItem(atPath: builtRedirector, toPath: appBundleExe)
 
             let chmod = Process()
             chmod.executableURL = URL(fileURLWithPath: "/bin/chmod")
@@ -222,13 +236,19 @@ struct GameLauncher {
 
             showAlert("Steam Integration Installed", "When you click Play in Steam, it will now open BO3 Launcher.")
         } catch let error as NSError {
+            // Put the original back, so a failed install doesn't leave Steam's
+            // Play button with nothing to run.
+            if fm.fileExists(atPath: backupPath) {
+                try? fm.removeItem(atPath: appBundleExe)
+                try? fm.moveItem(atPath: backupPath, toPath: appBundleExe)
+            }
             showAlert("Install Failed", permissionMessage(for: error, path: appBundleExe))
         }
     }
 
     static func uninstallSteamIntegration() {
-        let appBundleExe = Paths.bo3Root + "/CoDBlkOps3.app/Contents/MacOS/AppBundleExe"
-        let backupPath = Paths.bo3Root + "/CoDBlkOps3.app/Contents/MacOS/AppBundleExe_original"
+        let appBundleExe = appBundleExePath
+        let backupPath = appBundleExeBackupPath
 
         guard FileManager.default.fileExists(atPath: backupPath) else {
             showAlert("No Backup Found", "Cannot restore — no backup of the original launcher was found.")
