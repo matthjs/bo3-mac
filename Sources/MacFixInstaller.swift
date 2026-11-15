@@ -27,7 +27,7 @@ struct MacFixInstaller {
 
         let alert = NSAlert()
         alert.messageText = "BO3MacFix Not Installed"
-        alert.informativeText = "BO3MacFix is required to run Black Ops III on macOS.\n\nThis will extract the fix into your game folder. Wine must be installed separately (brew install --cask wine-stable)."
+        alert.informativeText = "BO3MacFix is required to run Black Ops III on macOS.\n\nThis will extract the fix into your game folder."
         alert.alertStyle = .informational
         alert.addButton(withTitle: "Install Now")
         alert.addButton(withTitle: "Later")
@@ -55,11 +55,15 @@ struct MacFixInstaller {
             if process.terminationStatus == 0 && isInstalled {
                 removeQuarantine()
                 syncRumbleDylib()
+                let hasWine = WineInstaller.findWine() != nil
                 showAlert(
                     title: "BO3MacFix Installed",
-                    message: "Successfully installed BO3MacFix to your game folder.\n\nMake sure Wine is installed:\nbrew install --cask --no-quarantine wine-stable",
+                    message: hasWine
+                        ? "Successfully installed BO3MacFix to your game folder."
+                        : "Successfully installed BO3MacFix to your game folder.\n\nTo play custom Workshop maps, install Wine from Options → Install Wine for Custom Maps.",
                     style: .informational
                 )
+                Task { @MainActor in await WineInstaller.shared.prepareWinePrefixIfNeeded() }
             } else {
                 showAlert(title: "Installation Failed", message: "tar exited with code \(process.terminationStatus). Try extracting manually.", style: .critical)
             }

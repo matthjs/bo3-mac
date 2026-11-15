@@ -5,6 +5,7 @@ struct HeaderView: View {
     var showDownloadAction: Bool = false
     @ObservedObject private var controller = ControllerManager.shared
     @ObservedObject private var downloader = GameDownloader.shared
+    @ObservedObject private var wine = WineInstaller.shared
 
     var body: some View {
         VStack(spacing: 0) {
@@ -261,6 +262,11 @@ struct HeaderView: View {
             if !MacFixInstaller.isInstalled {
                 Button("Install BO3MacFix...") {
                     MacFixInstaller.promptInstallIfNeeded()
+                }
+            }
+            if !wine.isInstalled && !wine.isBusy {
+                Button("Install Wine for Custom Maps...") {
+                    wine.promptInstall()
                 }
             }
             Divider()

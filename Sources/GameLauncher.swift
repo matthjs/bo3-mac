@@ -62,6 +62,7 @@ struct GameLauncher {
         env["DYLD_INSERT_LIBRARIES"] = dylibs
         env["WINEPREFIX"] = winePrefix
         env["SteamAppId"] = steamAppID
+        setWinePath(&env)
         if launchWithoutSteam {
             env["BO3MACFIX_OFFLINE"] = "1"
         }
@@ -84,6 +85,7 @@ struct GameLauncher {
 
         var env = ProcessInfo.processInfo.environment
         env["SteamAppId"] = steamAppID
+        setWinePath(&env)
         if launchWithoutSteam {
             env["BO3MACFIX_OFFLINE"] = "1"
         }
@@ -95,6 +97,15 @@ struct GameLauncher {
         } else {
             ControllerManager.shared.resume()
             launchViaSteam()
+        }
+    }
+
+    /// BO3MacFix only searches Homebrew and `/Applications` for Wine. Passing
+    /// the path also covers the `~/Applications` fallback `WineInstaller` uses
+    /// when `/Applications` isn't writable.
+    private static func setWinePath(_ env: inout [String: String]) {
+        if env["BO3MACFIX_WINEPATH"] == nil, let wine = WineInstaller.findWine() {
+            env["BO3MACFIX_WINEPATH"] = wine
         }
     }
 

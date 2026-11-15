@@ -6,6 +6,7 @@ struct ModsView: View {
     @State private var searchText = ""
     @State private var isLoading = true
     @State private var storage: StorageInfo?
+    @ObservedObject private var wine = WineInstaller.shared
 
     private static let workshop = SteamWorkshop()
 
@@ -22,6 +23,11 @@ struct ModsView: View {
             toolbar
             Divider().background(Theme.divider)
 
+            if !wine.isInstalled || wine.isBusy {
+                wineBanner
+                Divider().background(Theme.divider)
+            }
+
             if let storage {
                 StorageBarView(info: storage)
                 Divider().background(Theme.divider)
@@ -37,7 +43,49 @@ struct ModsView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.bgDark)
-        .task { await loadMods() }
+        .task {
+            wine.refresh()
+            await loadMods()
+        }
+    }
+
+    /// Custom maps fail mid-load without Wine, so say so where the maps are
+    /// listed rather than leaving players to hit the in-game error.
+    private var wineBanner: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "map.fill")
+                .foregroundColor(Theme.orange)
+            switch wine.phase {
+            case .downloading(let fraction):
+                Text("Downloading Wine… \(Int(fraction * 100))%")
+                ProgressView(value: fraction)
+                    .frame(width: 140)
+            case .installing:
+                Text("Installing Wine…")
+                ProgressView().scaleEffect(0.5).frame(height: 12)
+            case .preparing:
+                Text("Setting up Wine for custom maps…")
+                ProgressView().scaleEffect(0.5).frame(height: 12)
+            case .idle, .failed:
+                Text(failedMessage ?? "Custom maps need Wine to load on Mac.")
+                Spacer()
+                Button(failedMessage == nil ? "Install Wine" : "Try Again") { wine.promptInstall() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(Theme.orange)
+            }
+            if wine.isBusy { Spacer() }
+        }
+        .font(.system(size: 12))
+        .foregroundColor(Theme.textSecondary)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 10)
+        .background(Theme.bgMedium)
+    }
+
+    private var failedMessage: String? {
+        if case .failed = wine.phase { return "Wine didn't install." }
+        return nil
     }
 
     private func loadMods() async {
