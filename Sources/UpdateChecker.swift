@@ -1,51 +1,56 @@
 import Foundation
 import AppKit
 
+/// Checks this fork's GitHub releases for a newer version.
+///
+/// It used to read upstream's feed on bo3.redxam.com, which would have offered
+/// upstream builds and replaced this fork's fixes. Releases are tagged with
+/// `MARKETING_VERSION`, e.g. `v1.2.5`. Nothing is installed automatically: the
+/// player is sent to the release page to download it.
 struct UpdateChecker {
-    // maxawad.com is down under a registrar hold, so the feed lives on redxam.com.
-    private static let versionURL = URL(string: "https://bo3.redxam.com/bo3-launcher-version.json")!
+    private static let repo = "matthjs/bo3-mac"
+    private static let latestReleaseURL = URL(string: "https://api.github.com/repos/\(repo)/releases/latest")!
 
-    struct RemoteVersion: Decodable {
-        let version: String
-        let build: Int
-        let download_url: String
-        let release_notes: String
-        let page_url: String
+    private struct Release: Decodable {
+        let tag_name: String
+        let name: String?
+        let body: String?
+        let html_url: String
     }
 
     static var currentVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
     }
 
-    static var currentBuild: Int {
-        Int(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1") ?? 1
-    }
-
     static func checkForUpdates(silent: Bool = false) {
         Task {
             do {
-                let (data, _) = try await URLSession.shared.data(from: versionURL)
-                let remote = try JSONDecoder().decode(RemoteVersion.self, from: data)
+                var request = URLRequest(url: latestReleaseURL)
+                request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+                request.cachePolicy = .reloadIgnoringLocalCacheData
+                let (data, response) = try await URLSession.shared.data(for: request)
 
-                if remote.build > currentBuild {
-                    await MainActor.run {
-                        promptUpdate(remote)
-                    }
+                // GitHub answers 404 until the first release is published.
+                if (response as? HTTPURLResponse)?.statusCode == 404 {
+                    if !silent { await showUpToDate() }
+                    return
+                }
+                let release = try JSONDecoder().decode(Release.self, from: data)
+                let remoteVersion = release.tag_name.hasPrefix("v")
+                    ? String(release.tag_name.dropFirst())
+                    : release.tag_name
+
+                if isNewer(remoteVersion, than: currentVersion) {
+                    await MainActor.run { promptUpdate(release, version: remoteVersion) }
                 } else if !silent {
-                    await MainActor.run {
-                        let alert = NSAlert()
-                        alert.messageText = "You're Up to Date"
-                        alert.informativeText = "BO3 Launcher \(currentVersion) is the latest version."
-                        alert.alertStyle = .informational
-                        alert.runModal()
-                    }
+                    await showUpToDate()
                 }
             } catch {
                 if !silent {
                     await MainActor.run {
                         let alert = NSAlert()
                         alert.messageText = "Update Check Failed"
-                        alert.informativeText = "Could not reach the update server.\n\n\(error.localizedDescription)"
+                        alert.informativeText = "Could not reach GitHub.\n\n\(error.localizedDescription)"
                         alert.alertStyle = .warning
                         alert.runModal()
                     }
@@ -54,18 +59,33 @@ struct UpdateChecker {
         }
     }
 
-    private static func promptUpdate(_ remote: RemoteVersion) {
+    /// Numeric comparison, so 1.2.10 counts as newer than 1.2.9.
+    static func isNewer(_ remote: String, than current: String) -> Bool {
+        remote.compare(current, options: .numeric) == .orderedDescending
+    }
+
+    @MainActor
+    private static func showUpToDate() {
+        let alert = NSAlert()
+        alert.messageText = "You're Up to Date"
+        alert.informativeText = "BO3 Launcher \(currentVersion) is the latest version."
+        alert.alertStyle = .informational
+        alert.runModal()
+    }
+
+    @MainActor
+    private static func promptUpdate(_ release: Release, version: String) {
         let alert = NSAlert()
         alert.messageText = "Update Available"
-        alert.informativeText = "BO3 Launcher \(remote.version) is available (you have \(currentVersion)).\n\n\(remote.release_notes)"
+        let notes = release.body?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        alert.informativeText = "BO3 Launcher \(version) is available (you have \(currentVersion))."
+            + (notes.isEmpty ? "" : "\n\n\(notes.prefix(600))")
         alert.alertStyle = .informational
-        alert.addButton(withTitle: "Download Update")
+        alert.addButton(withTitle: "Open Release Page")
         alert.addButton(withTitle: "Later")
 
-        if alert.runModal() == .alertFirstButtonReturn {
-            if let url = URL(string: remote.download_url) {
-                NSWorkspace.shared.open(url)
-            }
+        if alert.runModal() == .alertFirstButtonReturn, let url = URL(string: release.html_url) {
+            NSWorkspace.shared.open(url)
         }
     }
 }

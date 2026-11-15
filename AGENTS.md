@@ -91,10 +91,13 @@ A version bump touches all of these. Keep them consistent:
 - `project.yml`: `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` (the build number)
 - `VERSION.json`
 - `CHANGELOG.md`: newest first, `## X.Y.Z (build N) - YYYY-MM-DD`
-- The remote feed `https://bo3.redxam.com/bo3-launcher-version.json` (lives
-  outside the repo). `UpdateChecker` compares only the integer **`build`**, so
-  a release that doesn't bump `CURRENT_PROJECT_VERSION` is invisible to users.
-  The same feed's optional `auth` block drives `AccountGate`.
+- A GitHub release on `matthjs/bo3-mac` tagged `vX.Y.Z`, matching
+  `MARKETING_VERSION`. `UpdateChecker` compares that tag numerically against
+  `CFBundleShortVersionString`, so a release whose tag isn't higher is
+  invisible to users. It only opens the release page; nothing auto-installs.
+  Upstream's feed on bo3.redxam.com is deliberately not used: it would offer
+  upstream builds, and its `auth` block was a remote sign-in switch that this
+  fork removed (`AccountGate`).
 
 Never hardcode the version string. Read `CFBundleShortVersionString` (see the 1.2.3 fix).
 
@@ -174,7 +177,7 @@ installer menu, which is handy for testing outside the launcher.
 | `GameDownloader.swift`, `DownloadView.swift` | Chunked download and decompression of a non-Steam game install (S3 manifest) |
 | `ControllerManager.swift`, `FocusManager.swift` | GameController navigation of the launcher UI |
 | `LoadingOverlay.swift` | Full-screen cover until the game window appears (240 s timeout) |
-| `UpdateChecker.swift`, `AccountGate.swift` | Remote version feed and the dormant sign-in policy switch |
+| `UpdateChecker.swift` | Manual update check against this fork's GitHub releases |
 | `AppMover.swift`, `PermissionChecker.swift` | Move to /Applications, Input Monitoring permission prompt |
 | `WhatsNewView.swift`, `SteamWebView.swift`, `SetupView.swift`, `Theme.swift` | UI |
 
