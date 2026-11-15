@@ -70,9 +70,10 @@ and everything else injected into it is built for x86_64.
 - **DualSense rumble**, for up to four controllers at once. The Mac port's
   ForceFeedback path does nothing on a DualSense, so the launcher injects a shim
   that turns the game's effects into Bluetooth output reports.
-- **PlayStation button prompts and icons**, everywhere the game would otherwise
-  draw Xbox ones: the HUD, the keybind list, the menu footers, and the
-  controller diagram on the layout screens.
+- **PlayStation button prompts and icons** when a PlayStation controller is
+  connected at launch, everywhere the game would otherwise draw Xbox ones: the
+  HUD, the keybind list, the menu footers, and the controller diagram on the
+  layout screens. Other controllers keep the game's Xbox prompts.
 - **A loading screen** over the black gap between launching and the game's first
   window, which can run close to a minute.
 

@@ -81,6 +81,13 @@ struct GameLauncher {
         if friendsOnlyMessages {
             env["BO3MACFIX_FRIENDSONLY"] = "1"
         }
+        // The shim swaps every controller prompt to PlayStation unless this is
+        // set, which showed PlayStation buttons to Xbox and Switch players.
+        // Only keep the swap when a PlayStation controller is connected at
+        // launch. The shim only checks that the variable exists.
+        if env["DS_XBOX_GLYPHS"] == nil && !ControllerManager.playStationControllerConnected {
+            env["DS_XBOX_GLYPHS"] = "1"
+        }
 
         let pid = spawnDetached(exe: gameExe, dir: gameDir, env: env)
         if pid > 0 {

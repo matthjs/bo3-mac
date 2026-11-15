@@ -131,7 +131,8 @@ stopping the queue to force the change ends the stream for good, which leaves
 silence on the right device.
 
 Debug env vars, set in the game's environment: `DS_PAD_ORDER`, `DS_XBOX_GLYPHS`
-(disable the PS swap), `DS_MENU_PROBE` (log requested asset names),
+(disable the PS swap; the launcher sets it unless a PlayStation controller is
+connected at launch), `DS_MENU_PROBE` (log requested asset names),
 `DS_DUMP_LUA`, `DS_NO_AUDIO_FOLLOW`. BO3MacFix reads `BO3MACFIX_OFFLINE`,
 `BO3MACFIX_PLAYERNAME`, `BO3MACFIX_NETWORKPASSWORD`, `BO3MACFIX_FRIENDSONLY`,
 and `BO3MACFIX_WINEPATH`.
