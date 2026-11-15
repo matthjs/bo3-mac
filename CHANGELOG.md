@@ -34,7 +34,7 @@
 - Game audio follows the Mac's default output device again. The game pinned its
   AudioQueues to whatever device was default at launch; the shim now swallows
   that pin, and an unpinned queue tracks the default on its own. Re-pointing a
-  live queue is not an alternative, see `AGENT.MD`.
+  live queue is not an alternative, see `AGENTS.md`.
 
 ## 1.2.1 (build 4) - 2026-10-12
 
