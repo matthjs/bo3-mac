@@ -6,6 +6,7 @@ struct ModsView: View {
     @State private var searchText = ""
     @State private var isLoading = true
     @State private var storage: StorageInfo?
+    @State private var deletingIDs: Set<String> = []
     @ObservedObject private var wine = WineInstaller.shared
 
     private static let workshop = SteamWorkshop()
@@ -212,14 +213,21 @@ struct ModsView: View {
             .onHover { h in if h { NSCursor.pointingHand.push() } else { NSCursor.pop() } }
 
             Button(action: { deleteMod(mod) }) {
-                Image(systemName: "trash")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(Color.red.opacity(0.7))
-                    .frame(width: 32, height: 32)
-                    .background(Color.red.opacity(0.1))
-                    .cornerRadius(6)
+                Group {
+                    if deletingIDs.contains(mod.workshopID) {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Image(systemName: "trash")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(Color.red.opacity(0.7))
+                    }
+                }
+                .frame(width: 32, height: 32)
+                .background(Color.red.opacity(0.1))
+                .cornerRadius(6)
             }
             .buttonStyle(.plain)
+            .disabled(deletingIDs.contains(mod.workshopID))
             .onHover { h in if h { NSCursor.pointingHand.push() } else { NSCursor.pop() } }
         }
         .padding(.horizontal, 16)
@@ -258,20 +266,29 @@ struct ModsView: View {
 
         guard alert.runModal() == .alertFirstButtonReturn else { return }
 
-        if case let .failure(error) = SteamUnsubscriber.unsubscribe(id: mod.workshopID) {
-            let failure = NSAlert()
-            failure.messageText = "Couldn't Unsubscribe"
-            failure.informativeText = "\(error.localizedDescription)\n\nNothing was deleted. Deleting the files while you're still subscribed would just make Steam download them again."
-            failure.alertStyle = .critical
-            failure.runModal()
-            return
-        }
+        deletingIDs.insert(mod.workshopID)
+        Task {
+            defer { deletingIDs.remove(mod.workshopID) }
 
-        // Steam usually clears the folder itself once the unsubscribe lands.
-        // removeItem is a permanent delete, not a move to the Trash.
-        try? FileManager.default.removeItem(atPath: mod.path)
-        mods.removeAll { $0.id == mod.id }
-        refreshStorage()
+            if case let .failure(error) = await SteamUnsubscriber.unsubscribe(id: mod.workshopID) {
+                let failure = NSAlert()
+                failure.messageText = "Couldn't Unsubscribe"
+                failure.informativeText = "\(error.localizedDescription)\n\nNothing was deleted. Deleting the files while you're still subscribed would just make Steam download them again."
+                failure.alertStyle = .critical
+                failure.runModal()
+                return
+            }
+
+            // Steam usually clears the folder itself once the unsubscribe lands.
+            // removeItem is a permanent delete, not a move to the Trash. Off the
+            // main thread, since a map can be gigabytes.
+            let path = mod.path
+            await Task.detached(priority: .userInitiated) {
+                try? FileManager.default.removeItem(atPath: path)
+            }.value
+            mods.removeAll { $0.id == mod.id }
+            refreshStorage()
+        }
     }
 
     private func refreshStorage() {

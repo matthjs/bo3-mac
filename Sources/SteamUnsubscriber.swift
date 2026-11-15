@@ -42,13 +42,17 @@ enum SteamUnsubscriber {
         return Int(output.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "\n").last ?? "")
     }
 
-    static func unsubscribe(id: String) -> Result<Void, Failure> {
-        switch run(argument: id) {
-        case .success:
-            return .success(())
-        case let .failure(error):
-            return .failure(error)
-        }
+    /// Async because the helper waits on Steam, which can take seconds, and
+    /// running it on the main thread froze the whole launcher meanwhile.
+    static func unsubscribe(id: String) async -> Result<Void, Failure> {
+        await Task.detached(priority: .userInitiated) {
+            switch run(argument: id) {
+            case .success:
+                return .success(())
+            case let .failure(error):
+                return .failure(error)
+            }
+        }.value
     }
 
     private static func run(argument: String) -> Result<String, Failure> {
