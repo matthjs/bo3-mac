@@ -88,6 +88,8 @@ uint64_t get_base_address() {
 // Gets just the filename of a given path
 const char *filename_from_path(const char *path) {
     size_t len = strlen(path);
+    if (len == 0)
+        return path;
     for (size_t i = len - 1; i > 0; i--) {
         if (path[i] == '/')
             return path + i + 1;
@@ -133,12 +135,12 @@ bool is_macos_dylib(const char *path) {
         if (fread(file_magic, 1, 4, fp) == 4) {
             // 0xFEEDFACF - 64-bit Mach-O
             static const uint8_t macho_header_64bit[4] = {0xcf, 0xfa, 0xed, 0xfe};
-            if (memcmp(file_magic, macho_header_64bit, 4) == 0)
-                return true;
             // 0xCAFEBABE - fat Mach-O
             static const uint8_t macho_header_fat[4] = {0xca, 0xfe, 0xba, 0xbe};
-            if (memcmp(file_magic, macho_header_fat, 4) == 0)
-                return true;
+            bool is_macho = memcmp(file_magic, macho_header_64bit, 4) == 0 ||
+                            memcmp(file_magic, macho_header_fat, 4) == 0;
+            fclose(fp);
+            return is_macho;
         }
         fclose(fp);
     }
@@ -166,9 +168,13 @@ bool get_file_sha1(const char *path, uint8_t *output_hash) {
 bool bytes_to_hex(const uint8_t *bytes, size_t bytes_len, char *out_string, size_t out_string_len) {
     if ((bytes_len * 2) >= out_string_len)
         return false;
-    out_string[0] = '\0';
+    // Written by index: passing out_string as both the destination and a
+    // %s argument of snprintf is undefined behaviour.
+    static const char digits[] = "0123456789abcdef";
     for (size_t i = 0; i < bytes_len; i++) {
-        snprintf(out_string, out_string_len, "%s%02x", out_string, bytes[i]);
+        out_string[i * 2] = digits[bytes[i] >> 4];
+        out_string[i * 2 + 1] = digits[bytes[i] & 0xF];
     }
+    out_string[bytes_len * 2] = '\0';
     return true;
 }

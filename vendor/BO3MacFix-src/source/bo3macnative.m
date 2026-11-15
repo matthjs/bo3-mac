@@ -73,6 +73,15 @@ void bounce_dock_icon() {
 bool alert_displaying = false;
 
 void display_nsalert(const char *title, const char *message) {
+    // on the main thread, waiting below would block the very queue that shows
+    // the alert, so show it directly
+    if ([NSThread isMainThread]) {
+        NSAlert *alert = [[NSAlert alloc] init];
+        [alert setMessageText:[NSString stringWithUTF8String:title]];
+        [alert setInformativeText:[NSString stringWithUTF8String:message]];
+        [alert runModal];
+        return;
+    }
     // don't ping another message if an alert is displaying
     while (alert_displaying) {
         usleep(1000);
