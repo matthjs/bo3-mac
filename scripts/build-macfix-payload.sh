@@ -14,6 +14,22 @@ OUTPUT="$ROOT/Resources/BO3MacFix.tar.gz"
 
 BASE_TAR="${1:-$SRC/BO3MacFix-upstream.tar}"
 
+# Upstream's binary assets are not in git, so a fresh clone fetches them. The
+# release matches MACFIX_VERSION in source/versioninfo.h; bump both together.
+UPSTREAM_URL="https://github.com/InvoxiPlayGames/BO3MacFix/releases/download/1.2-beta3/BO3MacFix-1.2-beta3.tar.gz"
+UPSTREAM_SHA256="aa954df5a912e8c0131a4178c0983e9d65313487fcc9092ea49a78bf6aa2b14c"
+
+if [ ! -f "$BASE_TAR" ] && [ -z "${1:-}" ]; then
+    echo "==> Downloading upstream release"
+    curl -fL --progress-bar -o "$BASE_TAR.part" "$UPSTREAM_URL"
+    if ! echo "$UPSTREAM_SHA256  $BASE_TAR.part" | shasum -a 256 -c - >/dev/null; then
+        rm -f "$BASE_TAR.part"
+        echo "error: upstream release checksum mismatch" >&2
+        exit 1
+    fi
+    mv "$BASE_TAR.part" "$BASE_TAR"
+fi
+
 if [ ! -f "$BASE_TAR" ]; then
     echo "error: upstream release tar not found at $BASE_TAR" >&2
     echo "Pass one as an argument, or drop it at $SRC/BO3MacFix-upstream.tar" >&2
@@ -48,11 +64,19 @@ chmod 0755 "$STAGING/BO3MacFix/Install_BO3MacFix" "$STAGING/BO3MacFix/AppBundleE
 # binary it finds, upstream's included. Hardened runtime applies only to these
 # processes; the game is launched separately and stays unhardened, so the
 # DYLD_INSERT_LIBRARIES injection still works.
+#
+# Without the Developer ID (any machine but the maintainer's), fall back to
+# ad-hoc signing, which is enough to run locally but will not notarize.
 echo "==> Signing payload binaries"
 SIGN_ID="Developer ID Application: Max Awad (J497DX6ZF8)"
+if security find-identity -v -p codesigning | grep -qF "$SIGN_ID"; then
+    SIGN_ARGS=(--timestamp --options runtime --sign "$SIGN_ID")
+else
+    echo "    Developer ID not found, signing ad-hoc (local use only)"
+    SIGN_ARGS=(--sign -)
+fi
 for binary in BO3MacFix.dylib Install_BO3MacFix AppBundleExe; do
-    codesign --force --timestamp --options runtime \
-        --sign "$SIGN_ID" "$STAGING/BO3MacFix/$binary"
+    codesign --force "${SIGN_ARGS[@]}" "$STAGING/BO3MacFix/$binary"
 done
 
 echo "==> Writing $OUTPUT"

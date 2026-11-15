@@ -6,7 +6,7 @@ final class GameDownloader: ObservableObject {
     static let shared = GameDownloader()
 
     static let manifestURL = URL(string: "https://bo3-mac.s3.us-east-1.amazonaws.com/manifest.json")!
-    static let cacheDir: String = {
+    nonisolated static let cacheDir: String = {
         FileManager.default.homeDirectoryForCurrentUser.path + "/Library/Caches/bo3-download"
     }()
 

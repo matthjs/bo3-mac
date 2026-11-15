@@ -6,15 +6,35 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Runs before the window is built, so ContentView sees a resolved path.
     func applicationWillFinishLaunching(_ notification: Notification) {
+        Self.migrateSettingsFromUpstream()
         Paths.autoDetectIfNeeded()
+    }
+
+    /// This fork changed the bundle ID from upstream's `com.redxam.bo3launcher`,
+    /// which moved settings to a new domain. Copy them over once, so a player
+    /// switching from the original launcher keeps a custom game folder and the
+    /// launch-without-Steam choice. Keys already set here win.
+    private static func migrateSettingsFromUpstream() {
+        let defaults = UserDefaults.standard
+        let doneKey = "migratedFromUpstreamSettings"
+        guard !defaults.bool(forKey: doneKey) else { return }
+        if let old = defaults.persistentDomain(forName: "com.redxam.bo3launcher") {
+            for (key, value) in old where defaults.object(forKey: key) == nil {
+                defaults.set(value, forKey: key)
+            }
+        }
+        defaults.set(true, forKey: doneKey)
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         stripMenuBar()
-        AccountGate.enforce()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             PermissionChecker.promptIfNeeded()
-            MacFixInstaller.promptInstallIfNeeded()
+            // Without the game, the setup screen already says so. Prompting
+            // here too would open with a "Game Not Found" dialog.
+            if MacFixInstaller.isGamePresent {
+                MacFixInstaller.promptInstallIfNeeded()
+            }
             GameLauncher.resumeSteamIntegrationIfNeeded()
         }
         menuObserver = NotificationCenter.default.addObserver(

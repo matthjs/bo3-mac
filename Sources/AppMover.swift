@@ -41,32 +41,34 @@ enum AppMover {
 
         guard alert.runModal() == .alertFirstButtonReturn else { return false }
 
-        // Remove existing copy if present
-        if alreadyExists {
-            do { try fm.removeItem(atPath: destination) } catch {
-                showError("Could not remove old copy: \(error.localizedDescription)")
-                return false
+        // Copy into a staging name beside the destination, then swap it in.
+        // The old copy used to be deleted first, so a failed move left the
+        // player with no launcher in /Applications at all. Now the existing
+        // copy and the running one both stay put until the new one is in place.
+        let staged = (applicationsDir as NSString)
+            .appendingPathComponent(".\(bundleName).new-\(UUID().uuidString)")
+        do {
+            try fm.copyItem(atPath: bundlePath, toPath: staged)
+            if alreadyExists {
+                _ = try fm.replaceItemAt(URL(fileURLWithPath: destination),
+                                         withItemAt: URL(fileURLWithPath: staged))
+            } else {
+                try fm.moveItem(atPath: staged, toPath: destination)
             }
+        } catch let error as NSError {
+            try? fm.removeItem(atPath: staged)
+            if error.domain == NSCocoaErrorDomain &&
+               (error.code == NSFileWriteNoPermissionError || error.code == NSFileReadNoPermissionError) {
+                showError("Permission denied.\n\nYour user account doesn't have write access to /Applications. Try dragging the app there manually, or run the app as an administrator.")
+            } else {
+                showError("Could not move app to /Applications: \(error.localizedDescription)")
+            }
+            return false
         }
 
-        // Move (not copy) the app to /Applications
-        do {
-            try fm.moveItem(atPath: bundlePath, toPath: destination)
-        } catch {
-            // moveItem can fail across volumes; fall back to copy + delete
-            do {
-                try fm.copyItem(atPath: bundlePath, toPath: destination)
-                try fm.removeItem(atPath: bundlePath)
-            } catch let innerError as NSError {
-                if innerError.domain == NSCocoaErrorDomain &&
-                   (innerError.code == NSFileWriteNoPermissionError || innerError.code == NSFileReadNoPermissionError) {
-                    showError("Permission denied.\n\nYour user account doesn't have write access to /Applications. Try dragging the app there manually, or run the app as an administrator.")
-                } else {
-                    showError("Could not move app to /Applications: \(innerError.localizedDescription)")
-                }
-                return false
-            }
-        }
+        // Only now remove the original, making this a move. If that fails, the
+        // player just has a spare copy, which is harmless.
+        try? fm.removeItem(atPath: bundlePath)
 
         // Strip quarantine from the new location
         let xattr = Process()

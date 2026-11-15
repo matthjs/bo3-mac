@@ -1,6 +1,12 @@
 #import <Foundation/Foundation.h>
 #import <AppKit/AppKit.h>
 
+// Passed in by the Xcode build phase from PRODUCT_BUNDLE_IDENTIFIER, so the
+// Launch Services fallback below can't drift from the app's real ID.
+#ifndef LAUNCHER_BUNDLE_ID
+#define LAUNCHER_BUNDLE_ID "com.matthjs.bo3launcher"
+#endif
+
 int main(int argc, char **argv) {
     @autoreleasepool {
         // Look for BO3 Launcher.app in known locations
@@ -23,7 +29,7 @@ int main(int argc, char **argv) {
 
         // Fallback: try to find it via Launch Services
         NSArray *urls = [[NSWorkspace sharedWorkspace]
-            URLsForApplicationsWithBundleIdentifier:@"com.redxam.bo3launcher"];
+            URLsForApplicationsWithBundleIdentifier:@LAUNCHER_BUNDLE_ID];
         if (urls.count > 0) {
             [[NSWorkspace sharedWorkspace] openURL:urls[0]];
             return 0;

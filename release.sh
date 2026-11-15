@@ -73,4 +73,5 @@ ditto -c -k --keepParent "$APP_PATH" "$DIST_ZIP"
 
 echo ""
 echo "✅ Done! Distributable: $DIST_ZIP"
-echo "   Upload this to maxawad.com for download."
+echo "   Publish it as a GitHub release tagged v<MARKETING_VERSION> so"
+echo "   Check for Updates offers it."

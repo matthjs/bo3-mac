@@ -14,6 +14,11 @@
 #include <sys/sysctl.h>
 #include <sys/mman.h>
 #include <sandbox.h>
+#include <spawn.h>
+#include <errno.h>
+#include <sys/wait.h>
+#include <crt_externs.h>
+#include <CommonCrypto/CommonDigest.h>
 
 #include <CoreFoundation/CoreFoundation.h>
 #include <IOKit/hid/IOHIDDevice.h>
@@ -174,8 +179,10 @@ install_hook_name(Live_SystemInfo, bool, int controllerIndex, int info, char *ou
     bool r = orig_Live_SystemInfo(controllerIndex, info, outputString, outputLen);
     if (info == 0 && r == true) {
         char newStr[200];
-        snprintf(newStr, 200, Version_Prefix " %s", outputString);
-        strncpy(outputString, newStr, outputLen);
+        snprintf(newStr, sizeof(newStr), Version_Prefix " %s", outputString);
+        // snprintf, not strncpy, so a long string still ends in a NUL
+        if (outputLen > 0)
+            snprintf(outputString, outputLen, "%s", newStr);
     }
     return r;
 }
@@ -212,100 +219,226 @@ install_hook_name(dwInstantDispatchMessage, bool, uint64_t userId, int controlle
     return orig_dwInstantDispatchMessage(userId, controllerIndex, data, datalen);
 }
 
+#define C2M_Path Macfix_Path "/cod2map/cod2map64.exe"
+
+// Hashes the navmesh/navvolume data that goes into a conversion. The hash is
+// saved next to the converted file, so a Workshop map update (or another map
+// with the same name) gets converted again instead of reusing stale data.
+static void hash_nav_data(const clumpheader *header, const NavMeshData *nm, const NavVolumeData *nv,
+                          char *out_hex, size_t out_hex_len) {
+    CC_SHA256_CTX ctx;
+    CC_SHA256_Init(&ctx);
+    CC_SHA256_Update(&ctx, header, sizeof(*header));
+    CC_SHA256_Update(&ctx, nm->navMeshSettingsBuffer, nm->navMeshSettingsBufferSize);
+    CC_SHA256_Update(&ctx, nm->userEdgePairsBuffer, nm->userEdgePairsBufferSize);
+    CC_SHA256_Update(&ctx, nm->clusterGraphBuffer, nm->clusterGraphBufferSize);
+    CC_SHA256_Update(&ctx, nm->mediatorBuffer, nm->mediatorBufferSize);
+    CC_SHA256_Update(&ctx, nm->metadataBuffer, nm->metadataBufferSize);
+    CC_SHA256_Update(&ctx, nm->clearanceCacheSeederBuffer, nm->clearanceCacheSeederBufferSize);
+    if (nv != NULL) {
+        CC_SHA256_Update(&ctx, nv->smallNavVolumeSettingsBuffer, nv->smallNavVolumeSettingsBufferSize);
+        CC_SHA256_Update(&ctx, nv->smallNavVolumeMediatorBuffer, nv->smallNavVolumeMediatorBufferSize);
+        CC_SHA256_Update(&ctx, nv->bigNavVolumeSettingsBuffer, nv->bigNavVolumeSettingsBufferSize);
+        CC_SHA256_Update(&ctx, nv->bigNavVolumeMediatorBuffer, nv->bigNavVolumeMediatorBufferSize);
+    }
+    uint8_t digest[CC_SHA256_DIGEST_LENGTH];
+    CC_SHA256_Final(digest, &ctx);
+    bytes_to_hex(digest, sizeof(digest), out_hex, out_hex_len);
+}
+
+static bool read_hash_file(const char *path, char *out_hex, size_t out_hex_len) {
+    FILE *fp = fopen(path, "r");
+    if (fp == NULL)
+        return false;
+    bool ok = fgets(out_hex, (int)out_hex_len, fp) != NULL;
+    fclose(fp);
+    if (ok)
+        out_hex[strcspn(out_hex, "\r\n")] = '\0';
+    return ok;
+}
+
+static void write_hash_file(const char *path, const char *hex) {
+    FILE *fp = fopen(path, "w");
+    if (fp == NULL)
+        return;
+    fprintf(fp, "%s\n", hex);
+    fclose(fp);
+}
+
+// Runs cod2map64 under Wine and waits for it. The arguments go straight to
+// posix_spawn rather than through a shell: the map name comes from a Workshop
+// item, and inside a popen() command line a name like "zm_$(...)" would run
+// as a shell command. The output is read to the end, because closing the pipe
+// early can kill the converter with SIGPIPE halfway through.
+static bool run_map_conversion(const char *wine, const char *clump_arg, const char *out_arg) {
+    const char *argv[] = { wine, C2M_Path, "-mac_navmesh", clump_arg, out_arg, NULL };
+    printf("executing: \"%s\" %s -mac_navmesh \"%s\" \"%s\"\n", wine, C2M_Path, clump_arg, out_arg);
+
+    int fds[2];
+    if (pipe(fds) != 0)
+        return false;
+    posix_spawn_file_actions_t actions;
+    posix_spawn_file_actions_init(&actions);
+    posix_spawn_file_actions_adddup2(&actions, fds[1], STDOUT_FILENO);
+    posix_spawn_file_actions_addclose(&actions, fds[0]);
+    posix_spawn_file_actions_addclose(&actions, fds[1]);
+
+    pid_t pid = 0;
+    int err = posix_spawn(&pid, wine, &actions, NULL, (char *const *)argv, *_NSGetEnviron());
+    posix_spawn_file_actions_destroy(&actions);
+    close(fds[1]);
+    if (err != 0) {
+        close(fds[0]);
+        printf("failed to start wine: %s\n", strerror(err));
+        return false;
+    }
+
+    char buf[0x400];
+    ssize_t n;
+    while ((n = read(fds[0], buf, sizeof(buf))) != 0) {
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            break;
+        }
+        fwrite(buf, 1, (size_t)n, stdout);
+    }
+    close(fds[0]);
+
+    int status = 0;
+    while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
+    printf("conversion finished (status %d)\n", status);
+    return true;
+}
+
 // Initialises the navmesh and navvolume for the map.
 // If we haven't made conversions already, call our conversion tool's binary.
-#define C2M_Path Macfix_Path "/cod2map/cod2map64.exe"
 install_hook_name(HKAI_InitMapData, void, const char *mapname, char restart) {
     printf("HKAI_InitMapData for %s\n", mapname);
 
     char physicsPath[0x200];
     char physicsAltPath[0x200];
+    char physicsHashPath[0x200];
+    char physicsAltVolumePath[0x200];
     snprintf(physicsPath, sizeof(physicsPath), "Physics/%s_navmesh.hkt", mapname);
     snprintf(physicsAltPath, sizeof(physicsAltPath), Macfix_Path "/Physics/%s_navmesh.hkt", mapname);
+    snprintf(physicsHashPath, sizeof(physicsHashPath), Macfix_Path "/Physics/%s_navmesh.sha256", mapname);
+    snprintf(physicsAltVolumePath, sizeof(physicsAltVolumePath), Macfix_Path "/Physics/%s_navvolume.hkt", mapname);
 
     // bees are broken on Demon Within - don't trust the original navmesh/navvolume
     bool shouldFixBees = strcmp(mapname, "cp_mi_cairo_infection2") == 0;
-    if ((access(physicsPath, F_OK) != 0 || (access(physicsPath, F_OK) == 0 && shouldFixBees))
-        && access(physicsAltPath, F_OK) != 0) {
-        if (get_wine_path() == NULL)
-            Com_Error(__FILE__, __LINE__, 2, Error_Prefix "You do not have Wine installed, so we can't convert the map '^2%s^7'.", mapname);
-        if (!shouldFixBees) {
-            char full_path[0x200];
-            build_usermods_path(mapname, ".ff", 0x200, full_path, 2, (char *)(game_base_address + ADDR_g_workshopMapId));
-            printf("map fastfile is '%s'\n", full_path);
-        }
-
-        char xasset_path[0x200];
-        snprintf(xasset_path, 0x200, "maps/%s/%s_navmesh", GetGamemodeString(), mapname);
-        NavMeshData *old_navmesh = DB_FindXAssetHeader(0x61, xasset_path, 1, -1);
-        if (old_navmesh == NULL)
-            Com_Error(__FILE__, __LINE__, 2, Error_Prefix "Failed to load '^3%s^7' for map '^2%s^7'.", xasset_path, mapname);
-    
-        snprintf(xasset_path, 0x200, "maps/%s/%s_navvolume", GetGamemodeString(), mapname);
-        NavVolumeData *old_navvolume = DB_FindXAssetHeader(0x62, xasset_path, 0, -1);
-
-        // set out a header for the conversion clump
-        clumpheader header;
-        memset(&header, 0, sizeof(clumpheader));
-        header.navMeshSettingsBufferSize = old_navmesh->navMeshSettingsBufferSize;
-        header.userEdgePairsBufferSize = old_navmesh->userEdgePairsBufferSize;
-        header.clusterGraphBufferSize = old_navmesh->clusterGraphBufferSize;
-        header.mediatorBufferSize = old_navmesh->mediatorBufferSize;
-        header.metadataBufferSize = old_navmesh->metadataBufferSize;
-        header.clearanceCacheSeederBufferSize = old_navmesh->clearanceCacheSeederBufferSize;
-        if (old_navvolume != NULL) {
-            header.bool_hasNavVolume = 1;
-            header.smallNavVolumeSettingsBufferSize = old_navvolume->smallNavVolumeSettingsBufferSize;
-            header.smallNavVolumeMediatorBufferSize = old_navvolume->smallNavVolumeMediatorBufferSize;
-            header.bigNavVolumeSettingsBufferSize = old_navvolume->bigNavVolumeSettingsBufferSize;
-            header.bigNavVolumeMediatorBufferSize = old_navvolume->bigNavVolumeMediatorBufferSize;
-        }
-
-        // make sure the new physics folder exists
-        if (access(Macfix_Path "/Physics/", F_OK) != 0)
-            mkdir(Macfix_Path "/Physics/", 0644);
-
-        // write out the header and all the navmesh/navvolume data to the clump
-        FILE *clumpfile = fopen(Macfix_Path "/Physics/convert.clump", "wb");
-        if (clumpfile == NULL)
-            Com_Error(__FILE__, __LINE__, 2, Error_Prefix "Failed to create map conversion clump file.");
-        fwrite(&header, sizeof(clumpheader), 1, clumpfile);
-        fwrite(old_navmesh->navMeshSettingsBuffer, old_navmesh->navMeshSettingsBufferSize, 1, clumpfile);
-        fwrite(old_navmesh->userEdgePairsBuffer, old_navmesh->userEdgePairsBufferSize, 1, clumpfile);
-        fwrite(old_navmesh->clusterGraphBuffer, old_navmesh->clusterGraphBufferSize, 1, clumpfile);
-        fwrite(old_navmesh->mediatorBuffer, old_navmesh->mediatorBufferSize, 1, clumpfile);
-        fwrite(old_navmesh->metadataBuffer, old_navmesh->metadataBufferSize, 1, clumpfile);
-        fwrite(old_navmesh->clearanceCacheSeederBuffer, old_navmesh->clearanceCacheSeederBufferSize, 1, clumpfile);
-        if (old_navvolume != NULL) {
-            fwrite(old_navvolume->smallNavVolumeSettingsBuffer, old_navvolume->smallNavVolumeSettingsBufferSize, 1, clumpfile);
-            fwrite(old_navvolume->smallNavVolumeMediatorBuffer, old_navvolume->smallNavVolumeMediatorBufferSize, 1, clumpfile);
-            fwrite(old_navvolume->bigNavVolumeSettingsBuffer, old_navvolume->bigNavVolumeSettingsBufferSize, 1, clumpfile);
-            fwrite(old_navvolume->bigNavVolumeMediatorBuffer, old_navvolume->bigNavVolumeMediatorBufferSize, 1, clumpfile);
-        }
-        fclose(clumpfile);
-
-        // call Wine with our cod2map64 binary, passing in the clump
-        char cwd[1025];
-        char wine_path[3075];
-        getcwd(cwd, sizeof(cwd));
-        snprintf(wine_path, sizeof(wine_path), "\"%s\" " C2M_Path " -mac_navmesh \"Z:%s/" Macfix_Path "/Physics/convert.clump\" \"Z:%s/" Macfix_Path "/Physics/%s\"", get_wine_path(), cwd, cwd, mapname);
-        printf("executing: %s\n", wine_path);
-        unsetenv("DYLD_INSERT_LIBRARIES"); // stop steam from fucking with our wine
-        FILE *convert = popen(wine_path, "r");
-        if (convert == NULL)
-            Com_Error(__FILE__, __LINE__, 2, Error_Prefix "Failed to start map conversion process for '^2%s^7'.", mapname);
-        char stdoutresult[0x400] = {0};
-        fread(stdoutresult, 1, 0x400, convert);
-        pclose(convert);
-        printf("%s\n", stdoutresult);
-        printf("conversion complete!\n");
-
-        // make sure we have a navmesh file generated
-        if (access(physicsAltPath, F_OK) != 0)
-            Com_Error(__FILE__, __LINE__, 2, Error_Prefix "Failed to convert map '^2%s^7' to Mac navmesh format.", mapname);
-        
-        unlink(Macfix_Path "/Physics/convert.clump");
+    // maps that ship a Mac navmesh don't need converting
+    if (access(physicsPath, F_OK) == 0 && !shouldFixBees) {
+        orig_HKAI_InitMapData(mapname, restart);
+        return;
     }
+    bool haveConverted = access(physicsAltPath, F_OK) == 0;
+
+    if (!haveConverted && get_wine_path() == NULL)
+        Com_Error(__FILE__, __LINE__, 2, Error_Prefix "You do not have Wine installed, so we can't convert the map '^2%s^7'.", mapname);
+    if (!shouldFixBees) {
+        char full_path[0x200];
+        build_usermods_path(mapname, ".ff", 0x200, full_path, 2, (char *)(game_base_address + ADDR_g_workshopMapId));
+        printf("map fastfile is '%s'\n", full_path);
+    }
+
+    char xasset_path[0x200];
+    snprintf(xasset_path, 0x200, "maps/%s/%s_navmesh", GetGamemodeString(), mapname);
+    NavMeshData *old_navmesh = DB_FindXAssetHeader(0x61, xasset_path, 1, -1);
+    if (old_navmesh == NULL)
+        Com_Error(__FILE__, __LINE__, 2, Error_Prefix "Failed to load '^3%s^7' for map '^2%s^7'.", xasset_path, mapname);
+
+    snprintf(xasset_path, 0x200, "maps/%s/%s_navvolume", GetGamemodeString(), mapname);
+    NavVolumeData *old_navvolume = DB_FindXAssetHeader(0x62, xasset_path, 0, -1);
+
+    // set out a header for the conversion clump
+    clumpheader header;
+    memset(&header, 0, sizeof(clumpheader));
+    header.navMeshSettingsBufferSize = old_navmesh->navMeshSettingsBufferSize;
+    header.userEdgePairsBufferSize = old_navmesh->userEdgePairsBufferSize;
+    header.clusterGraphBufferSize = old_navmesh->clusterGraphBufferSize;
+    header.mediatorBufferSize = old_navmesh->mediatorBufferSize;
+    header.metadataBufferSize = old_navmesh->metadataBufferSize;
+    header.clearanceCacheSeederBufferSize = old_navmesh->clearanceCacheSeederBufferSize;
+    if (old_navvolume != NULL) {
+        header.bool_hasNavVolume = 1;
+        header.smallNavVolumeSettingsBufferSize = old_navvolume->smallNavVolumeSettingsBufferSize;
+        header.smallNavVolumeMediatorBufferSize = old_navvolume->smallNavVolumeMediatorBufferSize;
+        header.bigNavVolumeSettingsBufferSize = old_navvolume->bigNavVolumeSettingsBufferSize;
+        header.bigNavVolumeMediatorBufferSize = old_navvolume->bigNavVolumeMediatorBufferSize;
+    }
+
+    char nav_hash[(CC_SHA256_DIGEST_LENGTH * 2) + 1];
+    hash_nav_data(&header, old_navmesh, old_navvolume, nav_hash, sizeof(nav_hash));
+
+    if (haveConverted) {
+        char saved_hash[sizeof(nav_hash)];
+        if (!read_hash_file(physicsHashPath, saved_hash, sizeof(saved_hash))) {
+            // converted before hashes were recorded, or shipped with the fix
+            // (Demon Within): trust it and record what it was made from
+            write_hash_file(physicsHashPath, nav_hash);
+            orig_HKAI_InitMapData(mapname, restart);
+            return;
+        }
+        if (strcmp(saved_hash, nav_hash) == 0) {
+            orig_HKAI_InitMapData(mapname, restart);
+            return;
+        }
+        printf("navmesh for %s changed since it was converted\n", mapname);
+        if (get_wine_path() == NULL) {
+            // an old conversion beats refusing to load a map that worked before
+            printf("no wine to reconvert, using the old conversion\n");
+            orig_HKAI_InitMapData(mapname, restart);
+            return;
+        }
+    }
+
+    // make sure the new physics folder exists
+    if (access(Macfix_Path "/Physics/", F_OK) != 0)
+        mkdir(Macfix_Path "/Physics/", 0755);
+
+    // write out the header and all the navmesh/navvolume data to the clump
+    FILE *clumpfile = fopen(Macfix_Path "/Physics/convert.clump", "wb");
+    if (clumpfile == NULL)
+        Com_Error(__FILE__, __LINE__, 2, Error_Prefix "Failed to create map conversion clump file.");
+    fwrite(&header, sizeof(clumpheader), 1, clumpfile);
+    fwrite(old_navmesh->navMeshSettingsBuffer, old_navmesh->navMeshSettingsBufferSize, 1, clumpfile);
+    fwrite(old_navmesh->userEdgePairsBuffer, old_navmesh->userEdgePairsBufferSize, 1, clumpfile);
+    fwrite(old_navmesh->clusterGraphBuffer, old_navmesh->clusterGraphBufferSize, 1, clumpfile);
+    fwrite(old_navmesh->mediatorBuffer, old_navmesh->mediatorBufferSize, 1, clumpfile);
+    fwrite(old_navmesh->metadataBuffer, old_navmesh->metadataBufferSize, 1, clumpfile);
+    fwrite(old_navmesh->clearanceCacheSeederBuffer, old_navmesh->clearanceCacheSeederBufferSize, 1, clumpfile);
+    if (old_navvolume != NULL) {
+        fwrite(old_navvolume->smallNavVolumeSettingsBuffer, old_navvolume->smallNavVolumeSettingsBufferSize, 1, clumpfile);
+        fwrite(old_navvolume->smallNavVolumeMediatorBuffer, old_navvolume->smallNavVolumeMediatorBufferSize, 1, clumpfile);
+        fwrite(old_navvolume->bigNavVolumeSettingsBuffer, old_navvolume->bigNavVolumeSettingsBufferSize, 1, clumpfile);
+        fwrite(old_navvolume->bigNavVolumeMediatorBuffer, old_navvolume->bigNavVolumeMediatorBufferSize, 1, clumpfile);
+    }
+    fclose(clumpfile);
+
+    // drop the old conversion and its hash, so a failed run can't leave stale
+    // output that looks valid
+    unlink(physicsAltPath);
+    unlink(physicsAltVolumePath);
+    unlink(physicsHashPath);
+
+    // call Wine with our cod2map64 binary, passing in the clump
+    char cwd[1025];
+    char clump_arg[0x600];
+    char out_arg[0x600];
+    getcwd(cwd, sizeof(cwd));
+    snprintf(clump_arg, sizeof(clump_arg), "Z:%s/" Macfix_Path "/Physics/convert.clump", cwd);
+    snprintf(out_arg, sizeof(out_arg), "Z:%s/" Macfix_Path "/Physics/%s", cwd, mapname);
+    unsetenv("DYLD_INSERT_LIBRARIES"); // stop steam from fucking with our wine
+    if (!run_map_conversion(get_wine_path(), clump_arg, out_arg)) {
+        unlink(Macfix_Path "/Physics/convert.clump");
+        Com_Error(__FILE__, __LINE__, 2, Error_Prefix "Failed to start map conversion process for '^2%s^7'.", mapname);
+    }
+    unlink(Macfix_Path "/Physics/convert.clump");
+
+    // make sure we have a navmesh file generated
+    if (access(physicsAltPath, F_OK) != 0)
+        Com_Error(__FILE__, __LINE__, 2, Error_Prefix "Failed to convert map '^2%s^7' to Mac navmesh format.", mapname);
+    write_hash_file(physicsHashPath, nav_hash);
 
     orig_HKAI_InitMapData(mapname, restart);
 }
@@ -450,13 +583,15 @@ install_hook_name(ASL_ToNativePath, void *, void *asl, char *in_str)
         strncmp(EMUPATH_F, in_str, strlen(EMUPATH_F)) == 0) {
         in_filename = in_str + strlen(EMUPATH_F);
     }
-    // check if it's an external mod or usermap, these need to go to / instead of /BO3MacFix/
-    // not a perfect check but i'm not checking for every permutation and i want to check *before* path correction
-    bool is_user_mod = 
-        strstr(in_str, "/usermaps") != NULL || strstr(in_str, "/mods") != NULL ||
-        strstr(in_str, "\\usermaps") != NULL || strstr(in_str, "\\mods") != NULL;
     // if it's in our cwd check if we have it in the BO3MacFix folder and redirect to read from there instead
     if (in_filename != NULL && strlen(in_filename) >= 2) {
+        // check if it's an external mod or usermap, these need to go to / instead of /BO3MacFix/
+        // not a perfect check but i'm not checking for every permutation and i want to check *before* path correction.
+        // Only the part after the game folder is checked: a game installed under a
+        // folder named "mods" would otherwise redirect every file.
+        bool is_user_mod =
+            strstr(in_filename, "/usermaps") != NULL || strstr(in_filename, "/mods") != NULL ||
+            strstr(in_filename, "\\usermaps") != NULL || strstr(in_filename, "\\mods") != NULL;
         strncat(newpath, cwd, sizeof(newpath) - strlen(newpath) - 1);
         newpath[strlen(newpath)] = '/';
         if (is_user_mod)
@@ -492,7 +627,8 @@ bool ISteamApps_BIsDlcInstalled(void *interface, AppId_t app) {
 
 char playerNameBuffer[17] = {0};
 void set_player_name(const char *name) {
-    strncpy(playerNameBuffer, name, sizeof(playerNameBuffer));
+    strncpy(playerNameBuffer, name, sizeof(playerNameBuffer) - 1);
+    playerNameBuffer[sizeof(playerNameBuffer) - 1] = '\0';
 }
 const char *get_player_name() {
     return playerNameBuffer;

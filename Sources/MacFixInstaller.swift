@@ -6,15 +6,18 @@ struct MacFixInstaller {
         FileManager.default.fileExists(atPath: Paths.macFixBinary)
     }
 
+    /// Checks for the game itself, not just its folder. Steam creates the
+    /// folder as soon as a download starts, so a folder-only check offered to
+    /// install BO3MacFix into a game that wasn't there yet.
     static var isGamePresent: Bool {
-        FileManager.default.fileExists(atPath: Paths.bo3Root)
+        FileManager.default.fileExists(atPath: Paths.bo3Root + "/CoDBlkOps3.app")
     }
 
     static func promptInstallIfNeeded() {
         if !isGamePresent {
             let alert = NSAlert()
             alert.messageText = "Game Not Found"
-            alert.informativeText = "Could not find Call of Duty: Black Ops III at the default Steam path.\n\nIf the game is installed on a different drive or location, click \"Browse\" to select it."
+            alert.informativeText = "Could not find Call of Duty: Black Ops III at the default Steam path.\n\nIf Steam is still downloading it, wait for the download to finish. If the game is installed on a different drive or location, click \"Browse\" to select it."
             alert.alertStyle = .warning
             alert.addButton(withTitle: "Browse...")
             alert.addButton(withTitle: "Cancel")
@@ -27,7 +30,7 @@ struct MacFixInstaller {
 
         let alert = NSAlert()
         alert.messageText = "BO3MacFix Not Installed"
-        alert.informativeText = "BO3MacFix is required to run Black Ops III on macOS.\n\nThis will extract the fix into your game folder. Wine must be installed separately (brew install --cask wine-stable)."
+        alert.informativeText = "BO3MacFix is required to run Black Ops III on macOS.\n\nThis will extract the fix into your game folder."
         alert.alertStyle = .informational
         alert.addButton(withTitle: "Install Now")
         alert.addButton(withTitle: "Later")
@@ -55,11 +58,15 @@ struct MacFixInstaller {
             if process.terminationStatus == 0 && isInstalled {
                 removeQuarantine()
                 syncRumbleDylib()
+                let hasWine = WineInstaller.findWine() != nil
                 showAlert(
                     title: "BO3MacFix Installed",
-                    message: "Successfully installed BO3MacFix to your game folder.\n\nMake sure Wine is installed:\nbrew install --cask --no-quarantine wine-stable",
+                    message: hasWine
+                        ? "Successfully installed BO3MacFix to your game folder."
+                        : "Successfully installed BO3MacFix to your game folder.\n\nTo play custom Workshop maps, install Wine from Options → Install Wine for Custom Maps.",
                     style: .informational
                 )
+                Task { @MainActor in await WineInstaller.shared.prepareWinePrefixIfNeeded() }
             } else {
                 showAlert(title: "Installation Failed", message: "tar exited with code \(process.terminationStatus). Try extracting manually.", style: .critical)
             }

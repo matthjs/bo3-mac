@@ -5,6 +5,7 @@ struct HeaderView: View {
     var showDownloadAction: Bool = false
     @ObservedObject private var controller = ControllerManager.shared
     @ObservedObject private var downloader = GameDownloader.shared
+    @ObservedObject private var wine = WineInstaller.shared
 
     var body: some View {
         VStack(spacing: 0) {
@@ -21,6 +22,9 @@ struct HeaderView: View {
             logoBlock
             Spacer()
             HStack(spacing: 16) {
+                if wine.isBusy {
+                    wineStatusBadge
+                }
                 if showDownloadAction {
                     downloadStatusBadge
                 } else {
@@ -178,6 +182,36 @@ struct HeaderView: View {
         .cursorHand()
     }
 
+    /// Lives in the header because Wine can be installed before the game is,
+    /// when the Mods tab isn't shown, and the install otherwise looks frozen.
+    private var wineStatusBadge: some View {
+        HStack(spacing: 8) {
+            switch wine.phase {
+            case .downloading(let fraction):
+                Text("WINE")
+                    .font(.system(size: 11, weight: .heavy))
+                    .foregroundColor(Theme.orange)
+                ProgressView(value: fraction)
+                    .progressViewStyle(.linear)
+                    .tint(Theme.orange)
+                    .frame(width: 80)
+                Text("\(Int(fraction * 100))%")
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundColor(Theme.textSecondary)
+            default:
+                ProgressView()
+                    .controlSize(.small)
+                Text(wine.phase == .preparing ? "SETTING UP WINE" : "INSTALLING WINE")
+                    .font(.system(size: 11, weight: .heavy))
+                    .foregroundColor(Theme.orange)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Theme.orange.opacity(0.15))
+        .cornerRadius(4)
+    }
+
     private var downloadStatusBadge: some View {
         Group {
             switch downloader.phase {
@@ -261,6 +295,11 @@ struct HeaderView: View {
             if !MacFixInstaller.isInstalled {
                 Button("Install BO3MacFix...") {
                     MacFixInstaller.promptInstallIfNeeded()
+                }
+            }
+            if !wine.isInstalled && !wine.isBusy {
+                Button("Install Wine for Custom Maps...") {
+                    wine.promptInstall()
                 }
             }
             Divider()

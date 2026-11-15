@@ -28,6 +28,8 @@ struct ContentView: View {
         }
         .background(Theme.bgDark)
         .onAppear { installType = Paths.installType }
+        // Covers players who installed Wine before BO3MacFix, or by hand.
+        .task { await WineInstaller.shared.prepareWinePrefixIfNeeded() }
         .onChange(of: downloader.phase) { _, newPhase in
             if case .finished = newPhase {
                 installType = Paths.installType

@@ -43,7 +43,7 @@ struct GameLauncher {
         let winePrefix = bo3Root + "/BO3MacFix/pfx"
 
         guard FileManager.default.fileExists(atPath: gameExe) else {
-            launchViaCLI()
+            launchViaSteam()
             return
         }
 
@@ -62,6 +62,7 @@ struct GameLauncher {
         env["DYLD_INSERT_LIBRARIES"] = dylibs
         env["WINEPREFIX"] = winePrefix
         env["SteamAppId"] = steamAppID
+        setWinePath(&env)
         if launchWithoutSteam {
             env["BO3MACFIX_OFFLINE"] = "1"
         }
@@ -71,31 +72,30 @@ struct GameLauncher {
             DispatchQueue.main.async { LoadingOverlay.shared.show() }
             monitorPid(pid)
         } else {
-            ControllerManager.shared.resume()
-            launchViaCLI()
-        }
-    }
-
-    private static func launchViaCLI() {
-        ControllerManager.shared.suspend()
-
-        let cliPath = Paths.macFixBinary
-        let cliDir = Paths.macFixDir
-
-        var env = ProcessInfo.processInfo.environment
-        env["SteamAppId"] = steamAppID
-        if launchWithoutSteam {
-            env["BO3MACFIX_OFFLINE"] = "1"
-        }
-
-        let pid = spawnDetached(exe: cliPath, dir: cliDir, env: env, args: ["9"])
-        if pid > 0 {
-            DispatchQueue.main.async { LoadingOverlay.shared.show() }
-            monitorPid(pid)
-        } else {
+            // There used to be a step here that ran `Install_BO3MacFix 9`. The
+            // installer ignores its arguments and reads the menu choice from
+            // stdin, which is empty when the launcher starts it, so it redrew
+            // its menu in a busy loop forever instead of starting the game.
             ControllerManager.shared.resume()
             launchViaSteam()
         }
+    }
+
+    /// BO3MacFix only searches Homebrew and `/Applications` for Wine. Passing
+    /// the path also covers the `~/Applications` fallback `WineInstaller` uses
+    /// when `/Applications` isn't writable.
+    ///
+    /// BO3MacFix runs Wine with the game's environment while the game waits on
+    /// it. If the prefix wasn't prepared, Wine would offer to install Mono and
+    /// Gecko in a dialog hidden behind the frozen game, so disable both, as
+    /// `WineInstaller.createPrefixIfNeeded` does. The debug output only slows
+    /// the conversion down.
+    private static func setWinePath(_ env: inout [String: String]) {
+        if env["BO3MACFIX_WINEPATH"] == nil, let wine = WineInstaller.findWine() {
+            env["BO3MACFIX_WINEPATH"] = wine
+        }
+        if env["WINEDLLOVERRIDES"] == nil { env["WINEDLLOVERRIDES"] = "mscoree,mshtml=" }
+        if env["WINEDEBUG"] == nil { env["WINEDEBUG"] = "-all" }
     }
 
     /// Spawn a process in its own session so it doesn't inherit our HID claims.
@@ -113,12 +113,16 @@ struct GameLauncher {
         for arg in args { cArgs.append(strdup(arg)) }
         cArgs.append(nil)
 
-        let savedDir = FileManager.default.currentDirectoryPath
-        FileManager.default.changeCurrentDirectoryPath(dir)
+        // The child's working directory is set through a file action rather
+        // than by changing ours around the call, which is process-wide and
+        // races with anything else resolving relative paths at the time.
+        var actions: posix_spawn_file_actions_t?
+        posix_spawn_file_actions_init(&actions)
+        posix_spawn_file_actions_addchdir_np(&actions, dir)
 
-        let result = posix_spawn(&pid, exe, nil, &attr, &cArgs, &cEnv)
+        let result = posix_spawn(&pid, exe, &actions, &attr, &cArgs, &cEnv)
 
-        FileManager.default.changeCurrentDirectoryPath(savedDir)
+        posix_spawn_file_actions_destroy(&actions)
         posix_spawnattr_destroy(&attr)
         cArgs.compactMap({ $0 }).forEach { free($0) }
         cEnv.compactMap({ $0 }).forEach { free($0) }
@@ -179,8 +183,11 @@ struct GameLauncher {
         let appBundleExe = Paths.bo3Root + "/CoDBlkOps3.app/Contents/MacOS/AppBundleExe"
         let backupPath = Paths.bo3Root + "/CoDBlkOps3.app/Contents/MacOS/AppBundleExe_original"
 
-        guard let builtRedirector = buildRedirector() else {
-            showAlert("Build Failed", "Could not compile the Steam redirector. Make sure Xcode command line tools are installed.")
+        // Prebuilt and signed with the app. It used to be compiled with clang
+        // on the player's Mac, which failed for anyone without Xcode's command
+        // line tools.
+        guard let builtRedirector = Bundle.main.path(forAuxiliaryExecutable: "SteamRedirector") else {
+            showAlert("Steam Integration", "The Steam redirector is missing from the app bundle. Reinstall BO3 Launcher and try again.")
             return
         }
 
@@ -237,32 +244,6 @@ struct GameLauncher {
         } catch let error as NSError {
             showAlert("Restore Failed", permissionMessage(for: error, path: appBundleExe))
         }
-    }
-
-    private static func buildRedirector() -> String? {
-        guard let sourceFile = Bundle.main.path(forResource: "SteamRedirector", ofType: "m") else {
-            return nil
-        }
-        let outputPath = NSTemporaryDirectory() + "SteamRedirector"
-
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/clang")
-        process.arguments = [
-            "-arch", "x86_64",
-            "-framework", "Foundation",
-            "-framework", "AppKit",
-            "-o", outputPath,
-            sourceFile
-        ]
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-            if process.terminationStatus == 0 {
-                return outputPath
-            }
-        } catch {}
-        return nil
     }
 
     private static func permissionMessage(for error: NSError, path: String) -> String {
