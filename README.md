@@ -3,8 +3,12 @@
 A native macOS launcher for **Call of Duty: Black Ops III** that makes Steam
 Workshop mods and custom zombies maps actually work on a Mac.
 
-**[Download the latest build](https://bo3.redxam.com/BO3Launcher.zip)** ·
-[Project page](https://maxawad.imake.lol/blackopsiii)
+**[Download the latest build](https://github.com/matthjs/bo3-mac/releases/latest)** ·
+[Original project page](https://maxawad.imake.lol/blackopsiii)
+
+This is a fork of the original BO3 Launcher by redxam gaming. It adds a
+one-click Wine install for custom maps and other fixes, and it checks this
+repository's releases for updates instead of the original's server.
 
 ![BO3 Launcher](https://maxawad.imake.lol/bo3-launcher-hero.png)
 
