@@ -28,6 +28,10 @@ targets:
       - Sources
       - path: Resources
         buildPhase: resources
+        # Wired up through INFOPLIST_FILE and entitlements, not shipped as files.
+        excludes:
+          - Info.plist
+          - BO3Launcher.entitlements
     postBuildScripts:
       - script: |
           mkdir -p "${BUILT_PRODUCTS_DIR}/${CONTENTS_FOLDER_PATH}/Resources"
