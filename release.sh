@@ -73,4 +73,5 @@ ditto -c -k --keepParent "$APP_PATH" "$DIST_ZIP"
 
 echo ""
 echo "✅ Done! Distributable: $DIST_ZIP"
-echo "   Upload this to maxawad.com for download."
+echo "   Upload it to bo3.redxam.com as BO3Launcher.zip, then bump \"build\" in"
+echo "   bo3-launcher-version.json so existing launchers see the update."
