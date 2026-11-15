@@ -28,8 +28,11 @@ There is also `vendor/SteamRedirector.m`, built by a post-build phase as a
 universal binary at `Contents/MacOS/SteamRedirector`. When the player enables
 Steam integration, `GameLauncher.installSteamIntegration` copies it over the
 game's `AppBundleExe` so that Steam's Play button opens the launcher. The
-original is backed up as `AppBundleExe_original`. Players never need a compiler,
-so don't reintroduce compiling anything on the user's machine.
+original is backed up as `AppBundleExe_original`. Whether integration is on is
+read from `AppBundleExe` itself (`isRedirector`), not from the backup, because
+a Steam file verify restores the original and leaves the backup behind.
+Players never need a compiler, so don't reintroduce compiling anything on the
+user's machine.
 
 Everything that loads into or talks to the game is x86_64, because the game and
 Valve's bundled `libsteam_api.dylib` are Intel-only and run under Rosetta. Do
@@ -91,7 +94,6 @@ reading the shim log at `~/Library/Logs/bo3-rumble.log`.
 A version bump touches all of these. Keep them consistent:
 
 - `project.yml`: `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` (the build number)
-- `VERSION.json`
 - `CHANGELOG.md`: newest first, `## X.Y.Z (build N) - YYYY-MM-DD`
 - A GitHub release on `matthjs/bo3-mac` tagged `vX.Y.Z`, matching
   `MARKETING_VERSION`. `UpdateChecker` compares that tag numerically against
@@ -176,18 +178,17 @@ installer menu, which is handy for testing outside the launcher.
 | File | Role |
 |---|---|
 | `LauncherApp.swift` | `@main`, AppDelegate startup sequence, trims the menu bar |
-| `ContentView.swift`, `HeaderView.swift` | Routing (setup / download / tabs), Play button, options menu |
+| `ContentView.swift`, `HeaderView.swift` | Routing (setup / tabs), Play button, options menu |
 | `Paths.swift` | Game-folder resolution, Steam library detection, drag and drop |
 | `GameLauncher.swift` | Spawning the game, Steam integration (AppBundleExe swap) |
 | `MacFixInstaller.swift` | Tarball install, per-launch dylib sync |
 | `ModsView.swift`, `SteamWorkshop.swift`, `SteamUnsubscriber.swift` | Workshop list, metadata (Steam Web API with HTML-title fallback), unsubscribe |
 | `StorageInfo.swift`, `StorageBarView.swift` | Disk usage breakdown |
-| `GameDownloader.swift`, `DownloadView.swift` | Chunked download and decompression of a non-Steam game install (S3 manifest) |
-| `ControllerManager.swift`, `FocusManager.swift` | GameController navigation of the launcher UI |
+| `ControllerManager.swift` | Controller detection, Play on the action button, suspended while the game runs |
 | `LoadingOverlay.swift` | Full-screen cover until the game window appears (240 s timeout) |
 | `UpdateChecker.swift` | Manual update check against this fork's GitHub releases |
 | `AppMover.swift`, `PermissionChecker.swift` | Move to /Applications, Input Monitoring permission prompt |
-| `WhatsNewView.swift`, `SteamWebView.swift`, `SetupView.swift`, `Theme.swift` | UI |
+| `WhatsNewView.swift`, `SetupView.swift`, `Theme.swift` | UI |
 
 ## Style
 
