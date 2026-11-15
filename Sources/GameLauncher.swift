@@ -103,10 +103,18 @@ struct GameLauncher {
     /// BO3MacFix only searches Homebrew and `/Applications` for Wine. Passing
     /// the path also covers the `~/Applications` fallback `WineInstaller` uses
     /// when `/Applications` isn't writable.
+    ///
+    /// BO3MacFix runs Wine with the game's environment while the game waits on
+    /// it. If the prefix wasn't prepared, Wine would offer to install Mono and
+    /// Gecko in a dialog hidden behind the frozen game, so disable both, as
+    /// `WineInstaller.createPrefixIfNeeded` does. The debug output only slows
+    /// the conversion down.
     private static func setWinePath(_ env: inout [String: String]) {
         if env["BO3MACFIX_WINEPATH"] == nil, let wine = WineInstaller.findWine() {
             env["BO3MACFIX_WINEPATH"] = wine
         }
+        if env["WINEDLLOVERRIDES"] == nil { env["WINEDLLOVERRIDES"] = "mscoree,mshtml=" }
+        if env["WINEDEBUG"] == nil { env["WINEDEBUG"] = "-all" }
     }
 
     /// Spawn a process in its own session so it doesn't inherit our HID claims.
