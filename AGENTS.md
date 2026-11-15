@@ -24,11 +24,12 @@ of the four build products below the change belongs in.
 | `DualSenseRumble.dylib` | `rumble-shim/dualsense_rumble.c` | **x86_64** | app `Resources/` → `<game>/BO3MacFix/` |
 | `steam-unsub` helper | `vendor/steam-unsub/steam-unsub.c` | **x86_64** | app `Contents/MacOS/` |
 
-There is also `vendor/SteamRedirector.m`. It ships as **source** in the app
-bundle and is compiled **on the user's machine** with `/usr/bin/clang` when they
-enable Steam integration (`GameLauncher.buildRedirector`). It replaces the game's
-`AppBundleExe` so that Steam's Play button opens the launcher. The original is
-backed up as `AppBundleExe_original`.
+There is also `vendor/SteamRedirector.m`, built by a post-build phase as a
+universal binary at `Contents/MacOS/SteamRedirector`. When the player enables
+Steam integration, `GameLauncher.installSteamIntegration` copies it over the
+game's `AppBundleExe` so that Steam's Play button opens the launcher. The
+original is backed up as `AppBundleExe_original`. Players never need a compiler,
+so don't reintroduce compiling anything on the user's machine.
 
 Everything that loads into or talks to the game is x86_64, because the game and
 Valve's bundled `libsteam_api.dylib` are Intel-only and run under Rosetta. Do

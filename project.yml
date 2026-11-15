@@ -32,7 +32,6 @@ targets:
       - script: |
           mkdir -p "${BUILT_PRODUCTS_DIR}/${CONTENTS_FOLDER_PATH}/Resources"
           cp -f "${PROJECT_DIR}/Resources/BO3MacFix.tar.gz" "${BUILT_PRODUCTS_DIR}/${CONTENTS_FOLDER_PATH}/Resources/BO3MacFix.tar.gz"
-          cp -f "${PROJECT_DIR}/vendor/SteamRedirector.m" "${BUILT_PRODUCTS_DIR}/${CONTENTS_FOLDER_PATH}/Resources/SteamRedirector.m"
           # Built from source rather than copied from a checked-in binary, which
           # went stale once and shipped an old shim. build.sh signs it with the
           # Developer ID when that identity is present; notarization rejects an
@@ -54,6 +53,21 @@ targets:
               --sign "${EXPANDED_CODE_SIGN_IDENTITY}" "$DEST"
           fi
         name: Build steam-unsub helper
+        basedOnDependencyAnalysis: false
+      - script: |
+          # Replaces the game's AppBundleExe so Steam's Play button opens the
+          # launcher. Built here, not on the player's Mac, so Steam integration
+          # works without Xcode's command line tools. It never loads into the
+          # game, so it can be universal. Signed like steam-unsub, for notarization.
+          DEST="${BUILT_PRODUCTS_DIR}/${EXECUTABLE_FOLDER_PATH}/SteamRedirector"
+          clang -arch x86_64 -arch arm64 -mmacosx-version-min=${MACOSX_DEPLOYMENT_TARGET} \
+            -O2 -Wall -framework Foundation -framework AppKit \
+            -o "$DEST" "${PROJECT_DIR}/vendor/SteamRedirector.m"
+          if [ -n "${EXPANDED_CODE_SIGN_IDENTITY:-}" ]; then
+            codesign --force --timestamp=none \
+              --sign "${EXPANDED_CODE_SIGN_IDENTITY}" "$DEST"
+          fi
+        name: Build SteamRedirector
         basedOnDependencyAnalysis: false
     entitlements:
       path: Resources/BO3Launcher.entitlements

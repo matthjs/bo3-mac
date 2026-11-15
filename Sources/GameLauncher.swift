@@ -183,8 +183,11 @@ struct GameLauncher {
         let appBundleExe = Paths.bo3Root + "/CoDBlkOps3.app/Contents/MacOS/AppBundleExe"
         let backupPath = Paths.bo3Root + "/CoDBlkOps3.app/Contents/MacOS/AppBundleExe_original"
 
-        guard let builtRedirector = buildRedirector() else {
-            showAlert("Build Failed", "Could not compile the Steam redirector. Make sure Xcode command line tools are installed.")
+        // Prebuilt and signed with the app. It used to be compiled with clang
+        // on the player's Mac, which failed for anyone without Xcode's command
+        // line tools.
+        guard let builtRedirector = Bundle.main.path(forAuxiliaryExecutable: "SteamRedirector") else {
+            showAlert("Steam Integration", "The Steam redirector is missing from the app bundle. Reinstall BO3 Launcher and try again.")
             return
         }
 
@@ -241,32 +244,6 @@ struct GameLauncher {
         } catch let error as NSError {
             showAlert("Restore Failed", permissionMessage(for: error, path: appBundleExe))
         }
-    }
-
-    private static func buildRedirector() -> String? {
-        guard let sourceFile = Bundle.main.path(forResource: "SteamRedirector", ofType: "m") else {
-            return nil
-        }
-        let outputPath = NSTemporaryDirectory() + "SteamRedirector"
-
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/clang")
-        process.arguments = [
-            "-arch", "x86_64",
-            "-framework", "Foundation",
-            "-framework", "AppKit",
-            "-o", outputPath,
-            sourceFile
-        ]
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-            if process.terminationStatus == 0 {
-                return outputPath
-            }
-        } catch {}
-        return nil
     }
 
     private static func permissionMessage(for error: NSError, path: String) -> String {
