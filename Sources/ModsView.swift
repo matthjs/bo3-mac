@@ -23,7 +23,8 @@ struct ModsView: View {
             toolbar
             Divider().background(Theme.divider)
 
-            if !wine.isInstalled || wine.isBusy {
+            // Progress shows in the header; this only offers the install.
+            if !wine.isInstalled && !wine.isBusy {
                 wineBanner
                 Divider().background(Theme.divider)
             }
@@ -55,26 +56,12 @@ struct ModsView: View {
         HStack(spacing: 12) {
             Image(systemName: "map.fill")
                 .foregroundColor(Theme.orange)
-            switch wine.phase {
-            case .downloading(let fraction):
-                Text("Downloading Wine… \(Int(fraction * 100))%")
-                ProgressView(value: fraction)
-                    .frame(width: 140)
-            case .installing:
-                Text("Installing Wine…")
-                ProgressView().scaleEffect(0.5).frame(height: 12)
-            case .preparing:
-                Text("Setting up Wine for custom maps…")
-                ProgressView().scaleEffect(0.5).frame(height: 12)
-            case .idle, .failed:
-                Text(failedMessage ?? "Custom maps need Wine to load on Mac.")
-                Spacer()
-                Button(failedMessage == nil ? "Install Wine" : "Try Again") { wine.promptInstall() }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(Theme.orange)
-            }
-            if wine.isBusy { Spacer() }
+            Text(failedMessage ?? "Custom maps need Wine to load on Mac.")
+            Spacer()
+            Button(failedMessage == nil ? "Install Wine" : "Try Again") { wine.promptInstall() }
+                .buttonStyle(.plain)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(Theme.orange)
         }
         .font(.system(size: 12))
         .foregroundColor(Theme.textSecondary)

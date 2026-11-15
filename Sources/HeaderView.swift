@@ -22,6 +22,9 @@ struct HeaderView: View {
             logoBlock
             Spacer()
             HStack(spacing: 16) {
+                if wine.isBusy {
+                    wineStatusBadge
+                }
                 if showDownloadAction {
                     downloadStatusBadge
                 } else {
@@ -177,6 +180,36 @@ struct HeaderView: View {
         }
         .buttonStyle(.plain)
         .cursorHand()
+    }
+
+    /// Lives in the header because Wine can be installed before the game is,
+    /// when the Mods tab isn't shown, and the install otherwise looks frozen.
+    private var wineStatusBadge: some View {
+        HStack(spacing: 8) {
+            switch wine.phase {
+            case .downloading(let fraction):
+                Text("WINE")
+                    .font(.system(size: 11, weight: .heavy))
+                    .foregroundColor(Theme.orange)
+                ProgressView(value: fraction)
+                    .progressViewStyle(.linear)
+                    .tint(Theme.orange)
+                    .frame(width: 80)
+                Text("\(Int(fraction * 100))%")
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundColor(Theme.textSecondary)
+            default:
+                ProgressView()
+                    .controlSize(.small)
+                Text(wine.phase == .preparing ? "SETTING UP WINE" : "INSTALLING WINE")
+                    .font(.system(size: 11, weight: .heavy))
+                    .foregroundColor(Theme.orange)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Theme.orange.opacity(0.15))
+        .cornerRadius(4)
     }
 
     private var downloadStatusBadge: some View {
