@@ -48,11 +48,19 @@ chmod 0755 "$STAGING/BO3MacFix/Install_BO3MacFix" "$STAGING/BO3MacFix/AppBundleE
 # binary it finds, upstream's included. Hardened runtime applies only to these
 # processes; the game is launched separately and stays unhardened, so the
 # DYLD_INSERT_LIBRARIES injection still works.
+#
+# Without the Developer ID (any machine but the maintainer's), fall back to
+# ad-hoc signing, which is enough to run locally but will not notarize.
 echo "==> Signing payload binaries"
 SIGN_ID="Developer ID Application: Max Awad (J497DX6ZF8)"
+if security find-identity -v -p codesigning | grep -qF "$SIGN_ID"; then
+    SIGN_ARGS=(--timestamp --options runtime --sign "$SIGN_ID")
+else
+    echo "    Developer ID not found, signing ad-hoc (local use only)"
+    SIGN_ARGS=(--sign -)
+fi
 for binary in BO3MacFix.dylib Install_BO3MacFix AppBundleExe; do
-    codesign --force --timestamp --options runtime \
-        --sign "$SIGN_ID" "$STAGING/BO3MacFix/$binary"
+    codesign --force "${SIGN_ARGS[@]}" "$STAGING/BO3MacFix/$binary"
 done
 
 echo "==> Writing $OUTPUT"
