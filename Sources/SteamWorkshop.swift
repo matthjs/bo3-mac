@@ -114,7 +114,7 @@ actor SteamWorkshop {
                 if let workshopPrefix = title.range(of: "Steam Workshop::") {
                     title = String(title[workshopPrefix.upperBound...])
                 }
-                title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+                title = title.decodingHTMLEntities.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !title.isEmpty {
                     return WorkshopItem(id: id, title: title, previewURL: nil)
                 }
