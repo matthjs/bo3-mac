@@ -11,7 +11,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         stripMenuBar()
-        AccountGate.enforce()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             PermissionChecker.promptIfNeeded()
             // Without the game, the setup screen already says so. Prompting
