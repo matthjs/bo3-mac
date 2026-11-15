@@ -43,7 +43,7 @@ struct GameLauncher {
         let winePrefix = bo3Root + "/BO3MacFix/pfx"
 
         guard FileManager.default.fileExists(atPath: gameExe) else {
-            launchViaCLI()
+            launchViaSteam()
             return
         }
 
@@ -72,29 +72,10 @@ struct GameLauncher {
             DispatchQueue.main.async { LoadingOverlay.shared.show() }
             monitorPid(pid)
         } else {
-            ControllerManager.shared.resume()
-            launchViaCLI()
-        }
-    }
-
-    private static func launchViaCLI() {
-        ControllerManager.shared.suspend()
-
-        let cliPath = Paths.macFixBinary
-        let cliDir = Paths.macFixDir
-
-        var env = ProcessInfo.processInfo.environment
-        env["SteamAppId"] = steamAppID
-        setWinePath(&env)
-        if launchWithoutSteam {
-            env["BO3MACFIX_OFFLINE"] = "1"
-        }
-
-        let pid = spawnDetached(exe: cliPath, dir: cliDir, env: env, args: ["9"])
-        if pid > 0 {
-            DispatchQueue.main.async { LoadingOverlay.shared.show() }
-            monitorPid(pid)
-        } else {
+            // There used to be a step here that ran `Install_BO3MacFix 9`. The
+            // installer ignores its arguments and reads the menu choice from
+            // stdin, which is empty when the launcher starts it, so it redrew
+            // its menu in a busy loop forever instead of starting the game.
             ControllerManager.shared.resume()
             launchViaSteam()
         }
