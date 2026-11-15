@@ -113,12 +113,16 @@ struct GameLauncher {
         for arg in args { cArgs.append(strdup(arg)) }
         cArgs.append(nil)
 
-        let savedDir = FileManager.default.currentDirectoryPath
-        FileManager.default.changeCurrentDirectoryPath(dir)
+        // The child's working directory is set through a file action rather
+        // than by changing ours around the call, which is process-wide and
+        // races with anything else resolving relative paths at the time.
+        var actions: posix_spawn_file_actions_t?
+        posix_spawn_file_actions_init(&actions)
+        posix_spawn_file_actions_addchdir_np(&actions, dir)
 
-        let result = posix_spawn(&pid, exe, nil, &attr, &cArgs, &cEnv)
+        let result = posix_spawn(&pid, exe, &actions, &attr, &cArgs, &cEnv)
 
-        FileManager.default.changeCurrentDirectoryPath(savedDir)
+        posix_spawn_file_actions_destroy(&actions)
         posix_spawnattr_destroy(&attr)
         cArgs.compactMap({ $0 }).forEach { free($0) }
         cEnv.compactMap({ $0 }).forEach { free($0) }
