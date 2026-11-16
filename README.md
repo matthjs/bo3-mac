@@ -124,6 +124,8 @@ friends-only message filter, branding). This fork adds:
   being compiled on your Mac, which needed Xcode's command line tools. The
   launcher reads whether integration is on from the game's files, so it notices
   when Steam restores the original, and a failed install puts the original back.
+  An option, **Steam's Play Starts the Game**, makes Steam's Play button start
+  the game in one click instead of only opening the launcher.
 - **Removed:** the game downloader (its download server is gone) and the empty
   DLC tab.
 - **Smaller fixes:** mod deletion no longer freezes the window, Workshop titles
@@ -158,8 +160,9 @@ Steamworks libraries. You need to own and install the game yourself.
    **Manage** → **Browse local files**.
 5. Click install when it offers to patch the game.
 6. Always start the game from the launcher, or turn on Steam integration
-   (Options) so Steam's Play button opens the launcher. Starting it straight
-   from Steam runs the game without BO3MacFix.
+   (Options) so Steam's Play button goes through the launcher. Turn on
+   **Steam's Play Starts the Game** as well to start it in one click. Starting
+   the game from Steam without integration runs it without BO3MacFix.
 
 ## Building from source
 

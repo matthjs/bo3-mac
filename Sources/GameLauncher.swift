@@ -11,6 +11,25 @@ struct GameLauncher {
         set { UserDefaults.standard.set(newValue, forKey: offlineModeKey) }
     }
 
+    static let steamPlayStartsGameKey = "steamPlayStartsGame"
+
+    /// With Steam integration, Steam's Play button opens the launcher through
+    /// `bo3launcher://steam-play`. When this is on, the launcher starts the
+    /// game straight away instead of waiting for a second click.
+    static var steamPlayStartsGame: Bool {
+        UserDefaults.standard.bool(forKey: steamPlayStartsGameKey)
+    }
+
+    /// Set while a game the launcher started is running, so a second press of
+    /// Steam's Play button doesn't start another copy.
+    private(set) static var isGameRunning = false
+
+    static func handleSteamPlay() {
+        NSApp.activate(ignoringOtherApps: true)
+        guard steamPlayStartsGame, !isGameRunning else { return }
+        launch()
+    }
+
     static let friendsOnlyKey = "friendsOnlyMessages"
 
     /// BO3MacFix's `BO3MACFIX_FRIENDSONLY`: drops the game's instant messages
@@ -55,7 +74,7 @@ struct GameLauncher {
         let winePrefix = bo3Root + "/BO3MacFix/pfx"
 
         guard FileManager.default.fileExists(atPath: gameExe) else {
-            launchViaSteam()
+            launchViaSteamOrReport()
             return
         }
 
@@ -91,6 +110,7 @@ struct GameLauncher {
 
         let pid = spawnDetached(exe: gameExe, dir: gameDir, env: env)
         if pid > 0 {
+            isGameRunning = true
             DispatchQueue.main.async { LoadingOverlay.shared.show() }
             monitorPid(pid)
         } else {
@@ -99,6 +119,18 @@ struct GameLauncher {
             // stdin, which is empty when the launcher starts it, so it redrew
             // its menu in a busy loop forever instead of starting the game.
             ControllerManager.shared.resume()
+            launchViaSteamOrReport()
+        }
+    }
+
+    /// With Steam integration on, Steam's Play button opens this launcher, so
+    /// falling back to Steam would only bring the launcher back, and with
+    /// "Steam's Play Starts the Game" on it would try again in a loop. Say what
+    /// went wrong instead.
+    private static func launchViaSteamOrReport() {
+        if isSteamIntegrated {
+            showAlert("Couldn't Start the Game", "BO3 Launcher couldn't start Call of Duty: Black Ops III from:\n\(Paths.bo3Root)\n\nCheck that the game is fully installed, or use Verify Integrity of Game Files in Steam.")
+        } else {
             launchViaSteam()
         }
     }
@@ -157,6 +189,7 @@ struct GameLauncher {
             var status: Int32 = 0
             waitpid(pid, &status, 0)
             DispatchQueue.main.async {
+                isGameRunning = false
                 LoadingOverlay.shared.dismiss()
                 ControllerManager.shared.resume()
             }
@@ -256,7 +289,7 @@ struct GameLauncher {
             try xattr.run()
             xattr.waitUntilExit()
 
-            showAlert("Steam Integration Installed", "When you click Play in Steam, it will now open BO3 Launcher.")
+            showAlert("Steam Integration Installed", "When you click Play in Steam, it will now open BO3 Launcher.\n\nTo start the game in one click instead, turn on \"Steam's Play Starts the Game\" in Options.")
         } catch let error as NSError {
             // Put the original back, so a failed install doesn't leave Steam's
             // Play button with nothing to run.

@@ -26,6 +26,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         defaults.set(true, forKey: doneKey)
     }
 
+    /// Steam's Play button can open the launcher before startup is done, so
+    /// the request waits for the startup prompts.
+    private var startupDone = false
+    private var pendingSteamPlay = false
+
+    /// `bo3launcher://steam-play` from the Steam redirector.
+    func handleOpenURL(_ url: URL) {
+        guard url.scheme == "bo3launcher", url.host == "steam-play" else { return }
+        if startupDone {
+            GameLauncher.handleSteamPlay()
+        } else {
+            pendingSteamPlay = true
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         stripMenuBar()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -36,6 +51,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 MacFixInstaller.promptInstallIfNeeded()
             }
             GameLauncher.resumeSteamIntegrationIfNeeded()
+            self.startupDone = true
+            if self.pendingSteamPlay {
+                self.pendingSteamPlay = false
+                GameLauncher.handleSteamPlay()
+            }
         }
         menuObserver = NotificationCenter.default.addObserver(
             forName: NSMenu.didAddItemNotification,
@@ -74,6 +94,10 @@ struct LauncherApp: App {
         WindowGroup {
             ContentView()
                 .frame(width: 1024, height: 640)
+                // Deliver bo3launcher:// URLs to this window. Without it,
+                // SwiftUI opens a second window for each one.
+                .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
+                .onOpenURL { appDelegate.handleOpenURL($0) }
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1024, height: 640)

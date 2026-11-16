@@ -31,6 +31,10 @@ game's `AppBundleExe` so that Steam's Play button opens the launcher. The
 original is backed up as `AppBundleExe_original`. Whether integration is on is
 read from `AppBundleExe` itself (`isRedirector`), not from the backup, because
 a Steam file verify restores the original and leaves the backup behind.
+The redirector opens the launcher with `bo3launcher://steam-play` (the URL
+scheme is in `Info.plist`). The launcher handles it with `onOpenURL` on its one
+window, which needs `handlesExternalEvents` or SwiftUI opens a second window,
+and starts the game only if "Steam's Play Starts the Game" is on.
 Players never need a compiler, so don't reintroduce compiling anything on the
 user's machine.
 

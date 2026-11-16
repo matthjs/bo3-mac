@@ -30,6 +30,10 @@ Launcher:
   launch; other controllers get `DS_XBOX_GLYPHS`.
 - Steam integration ships `SteamRedirector` prebuilt, reads its state from
   `AppBundleExe` itself, and restores the original if the install fails.
+- "Steam's Play Starts the Game" option: the redirector opens the launcher with
+  `bo3launcher://steam-play`, and with the option on the launcher starts the
+  game straight away. A failed start no longer falls back to Steam while
+  integration is on, which would only reopen the launcher.
 - Removed the game downloader (its server is gone) and the empty DLC tab.
 - Deleting a mod no longer blocks the main thread, and scraped Workshop titles
   decode HTML entities.

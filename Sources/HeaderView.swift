@@ -6,6 +6,7 @@ struct HeaderView: View {
     @ObservedObject private var controller = ControllerManager.shared
     @ObservedObject private var wine = WineInstaller.shared
     @AppStorage(GameLauncher.friendsOnlyKey) private var friendsOnly = false
+    @AppStorage(GameLauncher.steamPlayStartsGameKey) private var steamPlayStartsGame = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -256,6 +257,8 @@ struct HeaderView: View {
                 .help("Blocks in-game messages, such as invites, from players who aren't your Steam friends. Applies from the next launch.")
             Divider()
             if GameLauncher.isSteamIntegrated {
+                Toggle("Steam's Play Starts the Game", isOn: $steamPlayStartsGame)
+                    .help("When on, Steam's Play button starts the game through the launcher in one click. When off, it only opens the launcher.")
                 Button("Remove Steam Integration") {
                     GameLauncher.uninstallSteamIntegration()
                 }
