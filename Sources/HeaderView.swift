@@ -7,6 +7,10 @@ struct HeaderView: View {
     @ObservedObject private var wine = WineInstaller.shared
     @AppStorage(GameLauncher.friendsOnlyKey) private var friendsOnly = false
     @AppStorage(GameLauncher.steamPlayStartsGameKey) private var steamPlayStartsGame = false
+    /// The menu is built from view state, so a plain read of
+    /// `GameLauncher.isSteamIntegrated` stayed stale after installing or
+    /// removing integration until the launcher restarted.
+    @State private var steamIntegrated = GameLauncher.isSteamIntegrated
 
     var body: some View {
         VStack(spacing: 0) {
@@ -224,6 +228,17 @@ struct HeaderView: View {
     }
 
     private var optionsMenu: some View {
+        optionsMenuContent
+            .onReceive(NotificationCenter.default.publisher(for: GameLauncher.steamIntegrationChanged)) { _ in
+                steamIntegrated = GameLauncher.isSteamIntegrated
+            }
+            // A Steam file verify restores the original behind our back.
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                steamIntegrated = GameLauncher.isSteamIntegrated
+            }
+    }
+
+    private var optionsMenuContent: some View {
         Menu {
             Button("Open Game Folder") {
                 let url = URL(fileURLWithPath: Paths.bo3Root)
@@ -256,7 +271,7 @@ struct HeaderView: View {
             Toggle("Friends-Only Messages", isOn: $friendsOnly)
                 .help("Blocks in-game messages, such as invites, from players who aren't your Steam friends. Applies from the next launch.")
             Divider()
-            if GameLauncher.isSteamIntegrated {
+            if steamIntegrated {
                 Toggle("Steam's Play Starts the Game", isOn: $steamPlayStartsGame)
                     .help("When on, Steam's Play button starts the game through the launcher in one click. When off, it only opens the launcher.")
                 Button("Remove Steam Integration") {

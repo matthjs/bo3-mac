@@ -13,6 +13,10 @@ struct GameLauncher {
 
     static let steamPlayStartsGameKey = "steamPlayStartsGame"
 
+    /// Posted after Steam integration is installed or removed, so the Options
+    /// menu can update.
+    static let steamIntegrationChanged = Notification.Name("SteamIntegrationChanged")
+
     /// With Steam integration, Steam's Play button opens the launcher through
     /// `bo3launcher://steam-play`. When this is on, the launcher starts the
     /// game straight away instead of waiting for a second click.
@@ -289,6 +293,7 @@ struct GameLauncher {
             try xattr.run()
             xattr.waitUntilExit()
 
+            NotificationCenter.default.post(name: steamIntegrationChanged, object: nil)
             showAlert("Steam Integration Installed", "When you click Play in Steam, it will now open BO3 Launcher.\n\nTo start the game in one click instead, turn on \"Steam's Play Starts the Game\" in Options.")
         } catch let error as NSError {
             // Put the original back, so a failed install doesn't leave Steam's
@@ -315,6 +320,7 @@ struct GameLauncher {
                 try FileManager.default.removeItem(atPath: appBundleExe)
             }
             try FileManager.default.moveItem(atPath: backupPath, toPath: appBundleExe)
+            NotificationCenter.default.post(name: steamIntegrationChanged, object: nil)
             showAlert("Steam Integration Removed", "The original launcher has been restored. Steam will open the default Aspyr launcher again.")
         } catch let error as NSError {
             showAlert("Restore Failed", permissionMessage(for: error, path: appBundleExe))
