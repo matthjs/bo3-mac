@@ -28,6 +28,21 @@ enum AppMover {
         let fm = FileManager.default
         let alreadyExists = fm.fileExists(atPath: destination)
 
+        // A downloaded app that wasn't moved with Finder runs from a read-only
+        // copy under AppTranslocation. When that copy is the same build as the
+        // one in /Applications, there's nothing to replace: clear the download
+        // flag there so macOS stops translocating it, and reopen it.
+        if alreadyExists && bundlePath.contains("/AppTranslocation/") && isSameBuild(at: destination) {
+            alert.messageText = "Finish Installing BO3 Launcher?"
+            alert.informativeText = "macOS is running BO3 Launcher from a temporary copy because it was downloaded. The launcher will reopen from /Applications."
+            alert.addButton(withTitle: "Reopen")
+            alert.addButton(withTitle: "Not Now")
+            guard alert.runModal() == .alertFirstButtonReturn else { return false }
+            stripQuarantine(destination)
+            relaunch(at: destination)
+            return true
+        }
+
         if alreadyExists {
             alert.messageText = "Update BO3 Launcher in Applications?"
             alert.informativeText = "An older version exists in /Applications. This will replace it with the current version and relaunch the app."
@@ -70,15 +85,24 @@ enum AppMover {
         // player just has a spare copy, which is harmless.
         try? fm.removeItem(atPath: bundlePath)
 
-        // Strip quarantine from the new location
-        let xattr = Process()
-        xattr.executableURL = URL(fileURLWithPath: "/usr/bin/xattr")
-        xattr.arguments = ["-dr", "com.apple.quarantine", destination]
-        try? xattr.run()
-        xattr.waitUntilExit()
-
+        stripQuarantine(destination)
         relaunch(at: destination)
         return true
+    }
+
+    private static func isSameBuild(at path: String) -> Bool {
+        guard let other = Bundle(path: path)?.infoDictionary else { return false }
+        let mine = Bundle.main.infoDictionary
+        return other["CFBundleShortVersionString"] as? String == mine?["CFBundleShortVersionString"] as? String &&
+            other["CFBundleVersion"] as? String == mine?["CFBundleVersion"] as? String
+    }
+
+    private static func stripQuarantine(_ path: String) {
+        let xattr = Process()
+        xattr.executableURL = URL(fileURLWithPath: "/usr/bin/xattr")
+        xattr.arguments = ["-dr", "com.apple.quarantine", path]
+        try? xattr.run()
+        xattr.waitUntilExit()
     }
 
     private static func relaunch(at path: String) {

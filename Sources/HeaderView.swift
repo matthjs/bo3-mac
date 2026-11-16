@@ -2,10 +2,16 @@ import SwiftUI
 
 struct HeaderView: View {
     @Binding var selectedTab: LauncherTab
-    var showDownloadAction: Bool = false
+    var gameMissing: Bool = false
     @ObservedObject private var controller = ControllerManager.shared
-    @ObservedObject private var downloader = GameDownloader.shared
     @ObservedObject private var wine = WineInstaller.shared
+    @AppStorage(GameLauncher.friendsOnlyKey) private var friendsOnly = false
+    @AppStorage(GameLauncher.steamPlayStartsGameKey) private var steamPlayStartsGame = false
+    @AppStorage(GameLauncher.steamOverlayKey) private var steamOverlay = true
+    /// The menu is built from view state, so a plain read of
+    /// `GameLauncher.isSteamIntegrated` stayed stale after installing or
+    /// removing integration until the launcher restarted.
+    @State private var steamIntegrated = GameLauncher.isSteamIntegrated
 
     var body: some View {
         VStack(spacing: 0) {
@@ -25,8 +31,8 @@ struct HeaderView: View {
                 if wine.isBusy {
                     wineStatusBadge
                 }
-                if showDownloadAction {
-                    downloadStatusBadge
+                if gameMissing {
+                    gameMissingBadge
                 } else {
                     installTypeBadge
 
@@ -212,65 +218,28 @@ struct HeaderView: View {
         .cornerRadius(4)
     }
 
-    private var downloadStatusBadge: some View {
-        Group {
-            switch downloader.phase {
-            case .idle:
-                Text("GAME NOT INSTALLED")
-                    .font(.system(size: 11, weight: .heavy))
-                    .foregroundColor(Theme.orange)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Theme.orange.opacity(0.15))
-                    .cornerRadius(4)
-            case .downloading:
-                HStack(spacing: 8) {
-                    ProgressView(value: downloader.overallProgress)
-                        .progressViewStyle(.linear)
-                        .tint(Theme.orange)
-                        .frame(width: 80)
-                    Text("\(downloader.completedChunkCount)/\(downloader.totalChunkCount)")
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
-                        .foregroundColor(Theme.textSecondary)
-                    if !downloader.speedText.isEmpty {
-                        Text(downloader.speedText)
-                            .font(.system(size: 10, weight: .medium, design: .monospaced))
-                            .foregroundColor(Theme.orange)
-                    }
-                }
-            case .paused:
-                HStack(spacing: 6) {
-                    Image(systemName: "pause.fill")
-                        .font(.system(size: 9))
-                        .foregroundColor(Theme.orange)
-                    Text("PAUSED \(downloader.completedChunkCount)/\(downloader.totalChunkCount)")
-                        .font(.system(size: 11, weight: .heavy))
-                        .foregroundColor(Theme.orange)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(Theme.orange.opacity(0.15))
-                .cornerRadius(4)
-            case .decompressing:
-                HStack(spacing: 6) {
-                    ProgressView()
-                        .scaleEffect(0.6)
-                        .tint(Theme.orange)
-                    Text("Extracting...")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(Theme.textSecondary)
-                }
-            case .finished:
-                Text("DOWNLOAD COMPLETE")
-                    .font(.system(size: 11, weight: .heavy))
-                    .foregroundColor(.green)
-            default:
-                EmptyView()
-            }
-        }
+    private var gameMissingBadge: some View {
+        Text("GAME NOT INSTALLED")
+            .font(.system(size: 11, weight: .heavy))
+            .foregroundColor(Theme.orange)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Theme.orange.opacity(0.15))
+            .cornerRadius(4)
     }
 
     private var optionsMenu: some View {
+        optionsMenuContent
+            .onReceive(NotificationCenter.default.publisher(for: GameLauncher.steamIntegrationChanged)) { _ in
+                steamIntegrated = GameLauncher.isSteamIntegrated
+            }
+            // A Steam file verify restores the original behind our back.
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                steamIntegrated = GameLauncher.isSteamIntegrated
+            }
+    }
+
+    private var optionsMenuContent: some View {
         Menu {
             Button("Open Game Folder") {
                 let url = URL(fileURLWithPath: Paths.bo3Root)
@@ -287,12 +256,9 @@ struct HeaderView: View {
                 }
             }
             Divider()
-            if Paths.installType == .none {
-                Button("Download Game...") {
-                    downloader.startDownload(to: Paths.nonSteamParent)
-                }
-            }
-            if !MacFixInstaller.isInstalled {
+            // Only once the game is there, like the startup prompt. Before
+            // that, the item just led to a "Game Not Found" dialog.
+            if MacFixInstaller.isGamePresent && !MacFixInstaller.isInstalled {
                 Button("Install BO3MacFix...") {
                     MacFixInstaller.promptInstallIfNeeded()
                 }
@@ -303,7 +269,14 @@ struct HeaderView: View {
                 }
             }
             Divider()
-            if GameLauncher.isSteamIntegrated {
+            Toggle("Friends-Only Messages", isOn: $friendsOnly)
+                .help("Blocks in-game messages, such as invites, from players who aren't your Steam friends. Applies from the next launch.")
+            Toggle("Steam Overlay", isOn: $steamOverlay)
+                .help("Loads Steam's in-game overlay (Shift+Tab). Not used for offline launches. Applies from the next launch.")
+            Divider()
+            if steamIntegrated {
+                Toggle("Steam's Play Starts the Game", isOn: $steamPlayStartsGame)
+                    .help("When on, Steam's Play button starts the game through the launcher in one click. When off, it only opens the launcher.")
                 Button("Remove Steam Integration") {
                     GameLauncher.uninstallSteamIntegration()
                 }
@@ -330,7 +303,6 @@ struct HeaderView: View {
 
 enum LauncherTab: String, CaseIterable, Identifiable {
     case whatsNew = "What's New"
-    case dlc = "Downloadable Content"
     case mods = "Mods"
 
     var id: String { rawValue }

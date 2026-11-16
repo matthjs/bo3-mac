@@ -7,6 +7,29 @@
 #define LAUNCHER_BUNDLE_ID "com.matthjs.bo3launcher"
 #endif
 
+// Opens the launcher with bo3launcher://steam-play, so it knows Steam's Play
+// button sent it and can start the game straight away if the player chose
+// that. The URL goes to this particular copy of the app, not whichever copy
+// Launch Services would pick for the scheme. Falls back to just opening the
+// app if that fails.
+static BOOL openLauncher(NSURL *appURL) {
+    NSURL *playURL = [NSURL URLWithString:@"bo3launcher://steam-play"];
+    __block BOOL opened = NO;
+    if (@available(macOS 10.15, *)) {
+        dispatch_semaphore_t done = dispatch_semaphore_create(0);
+        NSWorkspaceOpenConfiguration *config = [NSWorkspaceOpenConfiguration configuration];
+        [[NSWorkspace sharedWorkspace] openURLs:@[playURL]
+                           withApplicationAtURL:appURL
+                                  configuration:config
+                              completionHandler:^(NSRunningApplication *app, NSError *error) {
+            opened = (error == nil);
+            dispatch_semaphore_signal(done);
+        }];
+        dispatch_semaphore_wait(done, dispatch_time(DISPATCH_TIME_NOW, 15 * NSEC_PER_SEC));
+    }
+    return opened || [[NSWorkspace sharedWorkspace] openURL:appURL];
+}
+
 int main(int argc, char **argv) {
     @autoreleasepool {
         // Look for BO3 Launcher.app in known locations
@@ -22,7 +45,7 @@ int main(int argc, char **argv) {
         for (NSString *path in searchPaths) {
             NSString *resolved = [path stringByStandardizingPath];
             if ([[NSFileManager defaultManager] fileExistsAtPath:resolved]) {
-                [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:resolved]];
+                openLauncher([NSURL fileURLWithPath:resolved]);
                 return 0;
             }
         }
@@ -31,7 +54,7 @@ int main(int argc, char **argv) {
         NSArray *urls = [[NSWorkspace sharedWorkspace]
             URLsForApplicationsWithBundleIdentifier:@LAUNCHER_BUNDLE_ID];
         if (urls.count > 0) {
-            [[NSWorkspace sharedWorkspace] openURL:urls[0]];
+            openLauncher(urls[0]);
             return 0;
         }
 

@@ -24,6 +24,17 @@
 	<string></string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.games</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>bo3launcher</string>
+			</array>
+		</dict>
+	</array>
 	<key>GCSupportsControllerUserInteraction</key>
 	<true/>
 	<key>NSRemovableVolumesUsageDescription</key>

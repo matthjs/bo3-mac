@@ -13,9 +13,11 @@ enum Theme {
     static let divider = Color(red: 0.22, green: 0.19, blue: 0.16)
 }
 
-struct ClickableStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .opacity(configuration.isPressed ? 0.6 : 1.0)
+extension View {
+    /// Pointing-hand cursor while hovering, for custom-styled buttons.
+    func cursorHand() -> some View {
+        self.onHover { hovering in
+            if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+        }
     }
 }

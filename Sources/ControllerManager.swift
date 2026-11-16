@@ -130,6 +130,12 @@ final class ControllerManager: ObservableObject {
         }
     }
 
+    /// Checked at launch, before `suspend()` clears `isConnected`, so it asks
+    /// GameController directly rather than reading the published state.
+    static var playStationControllerConnected: Bool {
+        GCController.controllers().contains { detectType($0) == .playstation }
+    }
+
     private static func detectType(_ controller: GCController) -> ControllerType {
         let name = (controller.vendorName ?? "").lowercased()
         if name.contains("dualsense") || name.contains("dualshock") || name.contains("playstation") || name.contains("sony") {

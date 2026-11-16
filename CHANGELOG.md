@@ -1,5 +1,46 @@
 # Changelog
 
+## 2.0.0 (build 8) - 2026-11-16
+
+First release of this fork. BO3MacFix:
+
+- Big custom maps no longer stutter. The image streamer re-sorts its priority
+  list every frame with an insertion sort, which goes quadratic when many
+  priorities change at once; on Leviathan (about 29,000 images) that stalled a
+  frame for about 550 ms roughly once a second. The sort now has a work budget
+  and falls back to the engine's own quicksort. See
+  `docs/leviathan-stutter.md`.
+- Map conversion runs the converter with `posix_spawn` instead of a shell
+  command built from the map name, reads its output to the end, and converts a
+  map again when its navmesh hash changes, so updated Workshop maps don't keep
+  stale navigation.
+- The `ASL_ToNativePath` hook caches the working directory instead of calling
+  `getcwd` on every path, which took up to a fifth of the file thread's time.
+- The Havok Visual Debugger server no longer listens on TCP port 25001: the
+  bind is refused.
+
+Launcher:
+
+- One-click Wine install (Gcenx wine-stable, pinned SHA-256) for custom map
+  conversion, run with Mono and Gecko prompts disabled.
+- Updates come from this fork's GitHub releases. The remote sign-in switch in
+  the original's update feed (`AccountGate`) is removed.
+- Friends-Only Messages option, passed to BO3MacFix as `BO3MACFIX_FRIENDSONLY`.
+- PlayStation prompts only when a PlayStation controller is connected at
+  launch; other controllers get `DS_XBOX_GLYPHS`.
+- Steam integration ships `SteamRedirector` prebuilt, reads its state from
+  `AppBundleExe` itself, and restores the original if the install fails.
+- "Steam's Play Starts the Game" option: the redirector opens the launcher with
+  `bo3launcher://steam-play`, and with the option on the launcher starts the
+  game straight away. A failed start no longer falls back to Steam while
+  integration is on, which would only reopen the launcher.
+- Steam Overlay option, on by default: the launcher loads Steam's
+  `gameoverlayrenderer.dylib` into the game, because with Steam integration
+  Steam injects it into the redirector instead. Not loaded for offline launches.
+- Removed the game downloader (its server is gone) and the empty DLC tab.
+- Deleting a mod no longer blocks the main thread, and scraped Workshop titles
+  decode HTML entities.
+
 ## 1.2.4 (build 7) - 2026-10-12
 
 - The injected libraries are refreshed in the game folder on every launch.

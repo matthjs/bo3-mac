@@ -11,6 +11,52 @@ struct GameLauncher {
         set { UserDefaults.standard.set(newValue, forKey: offlineModeKey) }
     }
 
+    static let steamPlayStartsGameKey = "steamPlayStartsGame"
+
+    /// Posted after Steam integration is installed or removed, so the Options
+    /// menu can update.
+    static let steamIntegrationChanged = Notification.Name("SteamIntegrationChanged")
+
+    /// With Steam integration, Steam's Play button opens the launcher through
+    /// `bo3launcher://steam-play`. When this is on, the launcher starts the
+    /// game straight away instead of waiting for a second click.
+    static var steamPlayStartsGame: Bool {
+        UserDefaults.standard.bool(forKey: steamPlayStartsGameKey)
+    }
+
+    /// Set while a game the launcher started is running, so a second press of
+    /// Steam's Play button doesn't start another copy.
+    private(set) static var isGameRunning = false
+
+    static func handleSteamPlay() {
+        NSApp.activate(ignoringOtherApps: true)
+        guard steamPlayStartsGame, !isGameRunning else { return }
+        launch()
+    }
+
+    static let steamOverlayKey = "steamOverlay"
+
+    /// Loads Steam's in-game overlay (Shift+Tab) into the game. On by default.
+    static var steamOverlay: Bool {
+        UserDefaults.standard.object(forKey: steamOverlayKey) as? Bool ?? true
+    }
+
+    private static var steamOverlayDylib: String {
+        NSHomeDirectory() + "/Library/Application Support/Steam/Steam.AppBundle/Steam/Contents/MacOS/gameoverlayrenderer.dylib"
+    }
+
+    static let friendsOnlyKey = "friendsOnlyMessages"
+
+    /// BO3MacFix's `BO3MACFIX_FRIENDSONLY`: drops the game's instant messages
+    /// (invites and the like, sent through Activision's service) from anyone
+    /// who isn't a Steam friend. Past BO3 exploits arrived that way. Off by
+    /// default, since it isn't known which features rely on messages from
+    /// strangers. It does not make a lobby private.
+    static var friendsOnlyMessages: Bool {
+        get { UserDefaults.standard.bool(forKey: friendsOnlyKey) }
+        set { UserDefaults.standard.set(newValue, forKey: friendsOnlyKey) }
+    }
+
     static func launch() {
         guard MacFixInstaller.isGamePresent else {
             MacFixInstaller.promptInstallIfNeeded()
@@ -43,7 +89,7 @@ struct GameLauncher {
         let winePrefix = bo3Root + "/BO3MacFix/pfx"
 
         guard FileManager.default.fileExists(atPath: gameExe) else {
-            launchViaSteam()
+            launchViaSteamOrReport()
             return
         }
 
@@ -56,6 +102,14 @@ struct GameLauncher {
         if FileManager.default.fileExists(atPath: rumbleDylib) {
             dylibs += ":" + rumbleDylib
         }
+        // Steam loads its overlay into whatever it starts, which with Steam
+        // integration is the redirector, not the game. Load it here instead.
+        // It needs the Steam client running, so not for offline launches.
+        if steamOverlay && !launchWithoutSteam && FileManager.default.fileExists(atPath: steamOverlayDylib) {
+            dylibs += ":" + steamOverlayDylib
+            env["SteamGameId"] = steamAppID
+            env["SteamOverlayGameId"] = steamAppID
+        }
         if let existing = env["DYLD_INSERT_LIBRARIES"] {
             dylibs += ":" + existing
         }
@@ -66,9 +120,20 @@ struct GameLauncher {
         if launchWithoutSteam {
             env["BO3MACFIX_OFFLINE"] = "1"
         }
+        if friendsOnlyMessages {
+            env["BO3MACFIX_FRIENDSONLY"] = "1"
+        }
+        // The shim swaps every controller prompt to PlayStation unless this is
+        // set, which showed PlayStation buttons to Xbox and Switch players.
+        // Only keep the swap when a PlayStation controller is connected at
+        // launch. The shim only checks that the variable exists.
+        if env["DS_XBOX_GLYPHS"] == nil && !ControllerManager.playStationControllerConnected {
+            env["DS_XBOX_GLYPHS"] = "1"
+        }
 
         let pid = spawnDetached(exe: gameExe, dir: gameDir, env: env)
         if pid > 0 {
+            isGameRunning = true
             DispatchQueue.main.async { LoadingOverlay.shared.show() }
             monitorPid(pid)
         } else {
@@ -77,6 +142,18 @@ struct GameLauncher {
             // stdin, which is empty when the launcher starts it, so it redrew
             // its menu in a busy loop forever instead of starting the game.
             ControllerManager.shared.resume()
+            launchViaSteamOrReport()
+        }
+    }
+
+    /// With Steam integration on, Steam's Play button opens this launcher, so
+    /// falling back to Steam would only bring the launcher back, and with
+    /// "Steam's Play Starts the Game" on it would try again in a loop. Say what
+    /// went wrong instead.
+    private static func launchViaSteamOrReport() {
+        if isSteamIntegrated {
+            showAlert("Couldn't Start the Game", "BO3 Launcher couldn't start Call of Duty: Black Ops III from:\n\(Paths.bo3Root)\n\nCheck that the game is fully installed, or use Verify Integrity of Game Files in Steam.")
+        } else {
             launchViaSteam()
         }
     }
@@ -135,6 +212,7 @@ struct GameLauncher {
             var status: Int32 = 0
             waitpid(pid, &status, 0)
             DispatchQueue.main.async {
+                isGameRunning = false
                 LoadingOverlay.shared.dismiss()
                 ControllerManager.shared.resume()
             }
@@ -147,13 +225,21 @@ struct GameLauncher {
         }
     }
 
-    static var isGameInstalled: Bool {
-        FileManager.default.fileExists(atPath: Paths.macFixBinary)
+    private static var appBundleExePath: String { Paths.bo3Root + "/CoDBlkOps3.app/Contents/MacOS/AppBundleExe" }
+    private static var appBundleExeBackupPath: String { Paths.bo3Root + "/CoDBlkOps3.app/Contents/MacOS/AppBundleExe_original" }
+
+    /// Checks the executable itself, not just the backup. Verifying the game
+    /// in Steam restores the original `AppBundleExe` and leaves the backup
+    /// behind, and a backup-only check kept reporting integration as on.
+    static var isSteamIntegrated: Bool {
+        isRedirector(appBundleExePath)
     }
 
-    static var isSteamIntegrated: Bool {
-        let backupPath = Paths.bo3Root + "/CoDBlkOps3.app/Contents/MacOS/AppBundleExe_original"
-        return FileManager.default.fileExists(atPath: backupPath)
+    /// Every build of the redirector, including the ones older launchers
+    /// compiled on the player's Mac, carries this message. Aspyr's launcher doesn't.
+    private static func isRedirector(_ path: String) -> Bool {
+        guard let data = FileManager.default.contents(atPath: path) else { return false }
+        return data.range(of: Data("BO3 Launcher.app not found".utf8)) != nil
     }
 
     private static let pendingSteamIntegrationKey = "pendingSteamIntegration"
@@ -180,8 +266,9 @@ struct GameLauncher {
             }
         }
 
-        let appBundleExe = Paths.bo3Root + "/CoDBlkOps3.app/Contents/MacOS/AppBundleExe"
-        let backupPath = Paths.bo3Root + "/CoDBlkOps3.app/Contents/MacOS/AppBundleExe_original"
+        let fm = FileManager.default
+        let appBundleExe = appBundleExePath
+        let backupPath = appBundleExeBackupPath
 
         // Prebuilt and signed with the app. It used to be compiled with clang
         // on the player's Mac, which failed for anyone without Xcode's command
@@ -191,10 +278,15 @@ struct GameLauncher {
             return
         }
 
-        // Back up original (only if not already backed up)
-        if !FileManager.default.fileExists(atPath: backupPath) {
+        // Back up the original. If Steam restored or updated it since an
+        // earlier install, the file in place is the newer original, so it
+        // replaces the old backup.
+        if fm.fileExists(atPath: appBundleExe) && !isRedirector(appBundleExe) {
             do {
-                try FileManager.default.moveItem(atPath: appBundleExe, toPath: backupPath)
+                if fm.fileExists(atPath: backupPath) {
+                    try fm.removeItem(atPath: backupPath)
+                }
+                try fm.moveItem(atPath: appBundleExe, toPath: backupPath)
             } catch let error as NSError {
                 showAlert("Backup Failed", permissionMessage(for: error, path: appBundleExe))
                 return
@@ -203,10 +295,10 @@ struct GameLauncher {
 
         // Copy redirector
         do {
-            if FileManager.default.fileExists(atPath: appBundleExe) {
-                try FileManager.default.removeItem(atPath: appBundleExe)
+            if fm.fileExists(atPath: appBundleExe) {
+                try fm.removeItem(atPath: appBundleExe)
             }
-            try FileManager.default.copyItem(atPath: builtRedirector, toPath: appBundleExe)
+            try fm.copyItem(atPath: builtRedirector, toPath: appBundleExe)
 
             let chmod = Process()
             chmod.executableURL = URL(fileURLWithPath: "/bin/chmod")
@@ -220,15 +312,22 @@ struct GameLauncher {
             try xattr.run()
             xattr.waitUntilExit()
 
-            showAlert("Steam Integration Installed", "When you click Play in Steam, it will now open BO3 Launcher.")
+            NotificationCenter.default.post(name: steamIntegrationChanged, object: nil)
+            showAlert("Steam Integration Installed", "When you click Play in Steam, it will now open BO3 Launcher.\n\nTo start the game in one click instead, turn on \"Steam's Play Starts the Game\" in Options.")
         } catch let error as NSError {
+            // Put the original back, so a failed install doesn't leave Steam's
+            // Play button with nothing to run.
+            if fm.fileExists(atPath: backupPath) {
+                try? fm.removeItem(atPath: appBundleExe)
+                try? fm.moveItem(atPath: backupPath, toPath: appBundleExe)
+            }
             showAlert("Install Failed", permissionMessage(for: error, path: appBundleExe))
         }
     }
 
     static func uninstallSteamIntegration() {
-        let appBundleExe = Paths.bo3Root + "/CoDBlkOps3.app/Contents/MacOS/AppBundleExe"
-        let backupPath = Paths.bo3Root + "/CoDBlkOps3.app/Contents/MacOS/AppBundleExe_original"
+        let appBundleExe = appBundleExePath
+        let backupPath = appBundleExeBackupPath
 
         guard FileManager.default.fileExists(atPath: backupPath) else {
             showAlert("No Backup Found", "Cannot restore — no backup of the original launcher was found.")
@@ -240,6 +339,7 @@ struct GameLauncher {
                 try FileManager.default.removeItem(atPath: appBundleExe)
             }
             try FileManager.default.moveItem(atPath: backupPath, toPath: appBundleExe)
+            NotificationCenter.default.post(name: steamIntegrationChanged, object: nil)
             showAlert("Steam Integration Removed", "The original launcher has been restored. Steam will open the default Aspyr launcher again.")
         } catch let error as NSError {
             showAlert("Restore Failed", permissionMessage(for: error, path: appBundleExe))
@@ -263,7 +363,9 @@ struct GameLauncher {
 
     /// Read from the bundle, never written out as a literal. A hardcoded string
     /// here went stale and the launcher reported v1.1.0 for three releases.
+    /// The fork numbers its releases from 2.0.0, apart from redxam's 1.x, and
+    /// says so next to the number.
     static var gameVersion: String {
-        "v" + (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0")
+        "v" + (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0") + " · fork"
     }
 }

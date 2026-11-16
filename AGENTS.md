@@ -28,8 +28,15 @@ There is also `vendor/SteamRedirector.m`, built by a post-build phase as a
 universal binary at `Contents/MacOS/SteamRedirector`. When the player enables
 Steam integration, `GameLauncher.installSteamIntegration` copies it over the
 game's `AppBundleExe` so that Steam's Play button opens the launcher. The
-original is backed up as `AppBundleExe_original`. Players never need a compiler,
-so don't reintroduce compiling anything on the user's machine.
+original is backed up as `AppBundleExe_original`. Whether integration is on is
+read from `AppBundleExe` itself (`isRedirector`), not from the backup, because
+a Steam file verify restores the original and leaves the backup behind.
+The redirector opens the launcher with `bo3launcher://steam-play` (the URL
+scheme is in `Info.plist`). The launcher handles it with `onOpenURL` on its one
+window, which needs `handlesExternalEvents` or SwiftUI opens a second window,
+and starts the game only if "Steam's Play Starts the Game" is on.
+Players never need a compiler, so don't reintroduce compiling anything on the
+user's machine.
 
 Everything that loads into or talks to the game is x86_64, because the game and
 Valve's bundled `libsteam_api.dylib` are Intel-only and run under Rosetta. Do
@@ -80,18 +87,25 @@ generated and git-ignored, so edit `project.yml` and never the project file.
   keychain and fall back to ad-hoc signing otherwise. Ad-hoc is fine for local
   runs. Notarization requires the Developer ID on every binary, including the
   ones inside the tarball.
-- `./release.sh` archives, signs, notarizes (keychain profile `notarytool-profile`),
-  staples, and writes `build/BO3-Launcher.zip`. It's maintainer-only.
+- `./release.sh` archives a Release build and writes `build/BO3-Launcher.zip`.
+  With a Developer ID in the keychain it signs with it and notarizes (keychain
+  profile `notarytool-profile`). Without one it signs ad-hoc and skips
+  notarization, so players have to allow the app once under System Settings →
+  Privacy & Security. This fork's releases are ad-hoc.
 
 There are **no automated tests**. Verify by building, launching the game, and
 reading the shim log at `~/Library/Logs/bo3-rumble.log`.
 
 ## Releasing / versioning
 
+This fork numbers its releases from 2.0.0, apart from redxam's 1.x, and the UI
+shows the number with a "· fork" label. Keep `MARKETING_VERSION` plain numbers:
+macOS allows at most three components, and `UpdateChecker` compares them
+numerically.
+
 A version bump touches all of these. Keep them consistent:
 
 - `project.yml`: `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` (the build number)
-- `VERSION.json`
 - `CHANGELOG.md`: newest first, `## X.Y.Z (build N) - YYYY-MM-DD`
 - A GitHub release on `matthjs/bo3-mac` tagged `vX.Y.Z`, matching
   `MARKETING_VERSION`. `UpdateChecker` compares that tag numerically against
@@ -129,7 +143,8 @@ stopping the queue to force the change ends the stream for good, which leaves
 silence on the right device.
 
 Debug env vars, set in the game's environment: `DS_PAD_ORDER`, `DS_XBOX_GLYPHS`
-(disable the PS swap), `DS_MENU_PROBE` (log requested asset names),
+(disable the PS swap; the launcher sets it unless a PlayStation controller is
+connected at launch), `DS_MENU_PROBE` (log requested asset names),
 `DS_DUMP_LUA`, `DS_NO_AUDIO_FOLLOW`. BO3MacFix reads `BO3MACFIX_OFFLINE`,
 `BO3MACFIX_PLAYERNAME`, `BO3MACFIX_NETWORKPASSWORD`, `BO3MACFIX_FRIENDSONLY`,
 and `BO3MACFIX_WINEPATH`.
@@ -165,8 +180,14 @@ installer menu, which is handy for testing outside the launcher.
   by "launch without Steam" and non-Steam installs), and fixes map conversion
   (`posix_spawn` instead of a shell command built from the map name, the
   converter's output read to the end, reconversion when a map's navmesh hash
-  changes) plus a few small memory and string bugs. Those fixes are worth
-  offering upstream.
+  changes) plus a few small memory and string bugs. It also caches the working
+  directory in the `ASL_ToNativePath` hook (`getcwd` on every path took up to
+  a fifth of the file thread's time) and refuses the TCP bind on port 25001,
+  so the Havok Visual Debugger server the Mac port leaves on never opens.
+  It also bounds the image streamer's per-frame insertion sort and falls back to
+  the engine's quicksort, which removed a 550 ms hitch every second on Leviathan
+  (`docs/leviathan-stutter.md`). Like every patch, that hook checks the expected
+  bytes first. Those fixes are worth offering upstream.
 - The launcher is not sandboxed (the entitlements are empty) and uses hardened
   runtime only in Release. The game is launched unhardened, which is what makes
   `DYLD_INSERT_LIBRARIES` work.
@@ -176,18 +197,17 @@ installer menu, which is handy for testing outside the launcher.
 | File | Role |
 |---|---|
 | `LauncherApp.swift` | `@main`, AppDelegate startup sequence, trims the menu bar |
-| `ContentView.swift`, `HeaderView.swift` | Routing (setup / download / tabs), Play button, options menu |
+| `ContentView.swift`, `HeaderView.swift` | Routing (setup / tabs), Play button, options menu |
 | `Paths.swift` | Game-folder resolution, Steam library detection, drag and drop |
 | `GameLauncher.swift` | Spawning the game, Steam integration (AppBundleExe swap) |
 | `MacFixInstaller.swift` | Tarball install, per-launch dylib sync |
 | `ModsView.swift`, `SteamWorkshop.swift`, `SteamUnsubscriber.swift` | Workshop list, metadata (Steam Web API with HTML-title fallback), unsubscribe |
 | `StorageInfo.swift`, `StorageBarView.swift` | Disk usage breakdown |
-| `GameDownloader.swift`, `DownloadView.swift` | Chunked download and decompression of a non-Steam game install (S3 manifest) |
-| `ControllerManager.swift`, `FocusManager.swift` | GameController navigation of the launcher UI |
+| `ControllerManager.swift` | Controller detection, Play on the action button, suspended while the game runs |
 | `LoadingOverlay.swift` | Full-screen cover until the game window appears (240 s timeout) |
 | `UpdateChecker.swift` | Manual update check against this fork's GitHub releases |
 | `AppMover.swift`, `PermissionChecker.swift` | Move to /Applications, Input Monitoring permission prompt |
-| `WhatsNewView.swift`, `SteamWebView.swift`, `SetupView.swift`, `Theme.swift` | UI |
+| `WhatsNewView.swift`, `SetupView.swift`, `Theme.swift` | UI |
 
 ## Style
 

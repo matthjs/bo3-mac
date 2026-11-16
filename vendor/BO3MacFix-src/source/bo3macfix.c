@@ -19,6 +19,10 @@
 #include <sys/wait.h>
 #include <crt_externs.h>
 #include <CommonCrypto/CommonDigest.h>
+#include <os/lock.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 #include <CoreFoundation/CoreFoundation.h>
 #include <IOKit/hid/IOHIDDevice.h>
@@ -564,13 +568,132 @@ DYLD_INTERPOSE(IOHIDDeviceGetProperty_hook, IOHIDDeviceGetProperty);
 
 int sandbox_init_with_parameters(const char *profile, uint64_t flags, const char *const parameters[], char **errorbuf);
 
+// The game resolves paths through ASL_ToNativePath constantly while it streams
+// assets, and getcwd() costs several syscalls under Rosetta. On Leviathan it
+// took up to a fifth of the file thread's time.
+// The working directory only changes through chdir/fchdir, so cache it and
+// drop the cache when the game calls either.
+static os_unfair_lock cwd_lock = OS_UNFAIR_LOCK_INIT;
+static char cached_cwd[1025];
+static bool cached_cwd_valid = false;
+
+static void get_cached_cwd(char *out, size_t out_len) {
+    os_unfair_lock_lock(&cwd_lock);
+    if (!cached_cwd_valid) {
+        cached_cwd_valid = getcwd(cached_cwd, sizeof(cached_cwd)) != NULL;
+        if (!cached_cwd_valid)
+            cached_cwd[0] = '\0';
+    }
+    strlcpy(out, cached_cwd, out_len);
+    os_unfair_lock_unlock(&cwd_lock);
+}
+
+static void invalidate_cached_cwd(void) {
+    os_unfair_lock_lock(&cwd_lock);
+    cached_cwd_valid = false;
+    os_unfair_lock_unlock(&cwd_lock);
+}
+
+static int chdir_new(const char *path) {
+    int ret = chdir(path);
+    invalidate_cached_cwd();
+    return ret;
+}
+DYLD_INTERPOSE(chdir_new, chdir);
+
+static int fchdir_new(int fd) {
+    int ret = fchdir(fd);
+    invalidate_cached_cwd();
+    return ret;
+}
+DYLD_INTERPOSE(fchdir_new, fchdir);
+
+// The Mac port ships with Havok's Visual Debugger server turned on. While a
+// map is loaded it listens on TCP port 25001 on every network interface and
+// accepts anyone who connects. Nothing needs it, and the game has no setting
+// for it, so refuse that one bind. The debugger then runs without a server.
+// The game's own networking is UDP and uses other ports.
+#define HAVOK_VDB_PORT 25001
+static int bind_new(int fd, const struct sockaddr *addr, socklen_t len) {
+    in_port_t port = 0;
+    if (addr != NULL && addr->sa_family == AF_INET && len >= sizeof(struct sockaddr_in))
+        port = ((const struct sockaddr_in *)addr)->sin_port;
+    else if (addr != NULL && addr->sa_family == AF_INET6 && len >= sizeof(struct sockaddr_in6))
+        port = ((const struct sockaddr_in6 *)addr)->sin6_port;
+    if (ntohs(port) == HAVOK_VDB_PORT) {
+        int type = 0;
+        socklen_t type_len = sizeof(type);
+        if (getsockopt(fd, SOL_SOCKET, SO_TYPE, &type, &type_len) == 0 && type == SOCK_STREAM) {
+            printf("not starting the Havok Visual Debugger server on port %d\n", HAVOK_VDB_PORT);
+            errno = EADDRNOTAVAIL;
+            return -1;
+        }
+    }
+    return bind(fd, addr, len);
+}
+DYLD_INTERPOSE(bind_new, bind);
+
+// Each frame the image streamer re-sorts its list of streamed images by
+// priority. When the list is the same length as last frame it uses an
+// insertion sort, which is quick if the order barely changed but quadratic
+// when many priorities change at once. Leviathan streams about 29,000 images,
+// and there the sort took about 550 ms roughly once a second: the frame waits
+// for it, so 120 fps dropped to 20-40 fps. Run the same insertion sort with a
+// work budget, and finish with the engine's own quicksort (the path it takes
+// when the length changed) once the budget runs out. That bounds the sort at
+// a few milliseconds.
+typedef bool (*stream_images_compare_t)(void *unused, uint32_t a, uint32_t b);
+typedef void (*stream_images_quicksort_t)(uint32_t *begin, uint32_t *end, void *unused);
+static stream_images_compare_t stream_images_compare;
+static stream_images_quicksort_t stream_images_quicksort;
+
+install_hook_name(StreamImages_InsertionSort, void, uint32_t *begin, uint32_t *end)
+{
+    size_t count = end - begin;
+    size_t moves = 0, budget = 8 * count + 256;
+    for (uint32_t *i = begin + 1; i < end; i++) {
+        uint32_t value = *i;
+        uint32_t *j = i;
+        while (j > begin && stream_images_compare(NULL, value, j[-1])) {
+            *j = j[-1];
+            j--;
+            if (++moves > budget) {
+                *j = value;
+                char unused;
+                stream_images_quicksort(begin, end, &unused);
+                return;
+            }
+        }
+        *j = value;
+    }
+}
+
+static void install_stream_sort_fix(void) {
+    // Only hook the build these addresses come from.
+    static const uint8_t insertion_sort[] = { 0x55, 0x48, 0x89, 0xe5, 0x41, 0x57, 0x41, 0x56, 0x41, 0x55, 0x41, 0x54, 0x53, 0x48, 0x83, 0xec, 0x18 };
+    static const uint8_t compare[] = { 0x55, 0x48, 0x89, 0xe5, 0x89, 0xf0, 0x48, 0x8d, 0x3d };
+    static const uint8_t quicksort[] = { 0x55, 0x48, 0x89, 0xe5, 0x41, 0x57, 0x41, 0x56, 0x41, 0x55, 0x41, 0x54, 0x53, 0x48, 0x83, 0xec, 0x28, 0x49, 0x89, 0xd4 };
+    if (memcmp((void *)(game_base_address + ADDR_StreamImages_InsertionSort), insertion_sort, sizeof(insertion_sort)) != 0 ||
+        memcmp((void *)(game_base_address + ADDR_StreamImages_Compare), compare, sizeof(compare)) != 0 ||
+        memcmp((void *)(game_base_address + ADDR_StreamImages_QuickSort), quicksort, sizeof(quicksort)) != 0) {
+        printf("[BO3MacFix] unexpected game build, not patching the image streamer sort\n");
+        return;
+    }
+    stream_images_compare = (stream_images_compare_t)(game_base_address + ADDR_StreamImages_Compare);
+    stream_images_quicksort = (stream_images_quicksort_t)(game_base_address + ADDR_StreamImages_QuickSort);
+    install_hook_StreamImages_InsertionSort((void *)(game_base_address + ADDR_StreamImages_InsertionSort));
+}
+
 #define EMUPATH_B "C:\\Emu\\AppAssets"
 #define EMUPATH_F "C:/Emu/AppAssets"
 install_hook_name(ASL_ToNativePath, void *, void *asl, char *in_str)
 {
     char cwd[1025];
-    getcwd(cwd, sizeof(cwd));
+    get_cached_cwd(cwd, sizeof(cwd));
     size_t cwdlen = strlen(cwd);
+    // an empty cwd would match every path and redirect all of them
+    if (cwdlen == 0)
+        return orig_ASL_ToNativePath(asl, in_str);
 
     char newpath[4096] = { 0 };
     char *in_filename = NULL;
@@ -801,6 +924,7 @@ __attribute__((constructor)) static void dylib_main() {
     install_hook_CL_FirstSnapshot((void *)(game_base_address + ADDR_CL_FirstSnapshot));
     install_hook_Com_GetBuildIntField((void *)(game_base_address + ADDR_Com_GetBuildIntField));
     install_hook_LiveSteam_RunEveryFrame((void *)(game_base_address + ADDR_LiveSteam_RunEveryFrame));
+    install_stream_sort_fix();
     //install_hook_SDL_GameControllerInitMappings((void *)(game_base_address + ADDR_SDL_GameControllerInitMappings));
 
     // set up functions that we later call

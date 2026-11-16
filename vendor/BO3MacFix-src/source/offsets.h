@@ -30,6 +30,9 @@
 #define ADDR_SDL_PrivateGameControllerAddMapping 0x13cff0 // func
 #define ADDR_SDL_GameControllerInitMappings 0x13d450 // func
 #define ADDR_Cbuf_AddText 0xf754aa // func
+#define ADDR_StreamImages_InsertionSort 0x15273cb // func - name is a guess, sorts the image streamer's priority list
+#define ADDR_StreamImages_Compare 0x1527878 // func - name is a guess, its comparison (ignores its first argument)
+#define ADDR_StreamImages_QuickSort 0x152746c // func - name is a guess, same list, same comparison
 
 //globals
 #define ADDR_g_workshopMapId 0x3087dac // char[] - name is a guess

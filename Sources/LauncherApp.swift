@@ -26,6 +26,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         defaults.set(true, forKey: doneKey)
     }
 
+    /// Steam's Play button can open the launcher before startup is done, so
+    /// the request waits for the startup prompts.
+    private var startupDone = false
+    private var pendingSteamPlay = false
+
+    /// `bo3launcher://steam-play` from the Steam redirector.
+    func handleOpenURL(_ url: URL) {
+        guard url.scheme == "bo3launcher", url.host == "steam-play" else { return }
+        if startupDone {
+            GameLauncher.handleSteamPlay()
+        } else {
+            pendingSteamPlay = true
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         stripMenuBar()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -36,6 +51,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 MacFixInstaller.promptInstallIfNeeded()
             }
             GameLauncher.resumeSteamIntegrationIfNeeded()
+            self.startupDone = true
+            if self.pendingSteamPlay {
+                self.pendingSteamPlay = false
+                GameLauncher.handleSteamPlay()
+            }
         }
         menuObserver = NotificationCenter.default.addObserver(
             forName: NSMenu.didAddItemNotification,
@@ -44,24 +64,30 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ) { [weak self] _ in self?.stripMenuBar() }
     }
 
+    /// Hides the menus the launcher doesn't use. They're hidden rather than
+    /// removed because SwiftUI owns the main menu: when it rebuilds it, which
+    /// opening a bo3launcher:// URL triggers, it inserts items at the indices it
+    /// expects, and removed items made `NSMenu insertItem:atIndex:` abort.
     private func stripMenuBar() {
         guard let mainMenu = NSApp.mainMenu else { return }
-        let removeTitles: Set<String> = ["File", "Edit", "View", "Window", "Format"]
+        let hideTitles: Set<String> = ["File", "Edit", "View", "Window", "Format"]
         for item in mainMenu.items {
             let title = item.submenu?.title ?? item.title
-            if removeTitles.contains(title) {
-                mainMenu.removeItem(item)
+            if hideTitles.contains(title) && !item.isHidden {
+                item.isHidden = true
             }
         }
 
         if let appMenu = mainMenu.items.first?.submenu {
-            let keep = appMenu.items.filter {
-                $0.title.lowercased().contains("about") ||
-                $0.title.lowercased().contains("quit") ||
-                ($0.isSeparatorItem && $0 == appMenu.items.last(where: { $0.isSeparatorItem }))
+            let lastSeparator = appMenu.items.last(where: { $0.isSeparatorItem })
+            for item in appMenu.items {
+                let keep = item.title.lowercased().contains("about") ||
+                    item.title.lowercased().contains("quit") ||
+                    item == lastSeparator
+                if !keep && !item.isHidden {
+                    item.isHidden = true
+                }
             }
-            appMenu.removeAllItems()
-            for item in keep { appMenu.addItem(item) }
         }
     }
 }
@@ -74,6 +100,10 @@ struct LauncherApp: App {
         WindowGroup {
             ContentView()
                 .frame(width: 1024, height: 640)
+                // Deliver bo3launcher:// URLs to this window. Without it,
+                // SwiftUI opens a second window for each one.
+                .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
+                .onOpenURL { appDelegate.handleOpenURL($0) }
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1024, height: 640)

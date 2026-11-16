@@ -31,7 +31,7 @@ struct WhatsNewView: View {
                             .font(.system(size: 20, weight: .bold))
                             .foregroundColor(Theme.orange)
                             .padding(.trailing, 8)
-                        Text("by redxam gaming")
+                        Text("BO3 LAUNCHER FOR MAC")
                             .font(.system(size: 14, weight: .heavy))
                             .foregroundColor(Theme.orange)
                     }
@@ -122,22 +122,13 @@ struct WhatsNewView: View {
                             .foregroundColor(Theme.textPrimary)
                     }
 
-                    changelogItem("Game audio follows your Mac's output device, switch to headphones mid-game")
-                    changelogItem("PlayStation button prompts and controller diagrams")
-                    changelogItem("Rumble for up to four DualSense controllers")
-                    changelogItem("Loading screen over the black gap at startup")
-                    changelogItem("Non-Steam installation, download and play without Steam")
-
-                    Divider()
-                        .background(Color.white.opacity(0.1))
-                        .padding(.vertical, 2)
-
-                    Text("COMING NEXT")
-                        .font(.system(size: 9, weight: .heavy, design: .monospaced))
-                        .foregroundColor(Theme.textMuted)
-
-                    changelogItem("Injector integration for non-Steam launch", pending: true)
-                    changelogItem("Custom launch arguments", pending: true)
+                    changelogItem("Big custom maps such as Leviathan no longer stutter every second")
+                    changelogItem("One-click Wine install, so custom Workshop maps load")
+                    changelogItem("Updated Workshop maps are converted again instead of reusing stale data")
+                    changelogItem("The debugger port the game left open is now closed")
+                    changelogItem("Friends-Only Messages option in Options")
+                    changelogItem("PlayStation prompts only when a PlayStation controller is connected")
+                    changelogItem("Updates come from this fork's GitHub releases")
                 }
                 .padding(16)
             }
@@ -145,15 +136,15 @@ struct WhatsNewView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func changelogItem(_ text: String, pending: Bool = false) -> some View {
+    private func changelogItem(_ text: String) -> some View {
         HStack(alignment: .top, spacing: 8) {
-            Image(systemName: pending ? "circle" : "checkmark.circle.fill")
+            Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 10, weight: .bold))
-                .foregroundColor(pending ? Theme.textMuted : Theme.orange)
+                .foregroundColor(Theme.orange)
                 .padding(.top, 2)
             Text(text)
                 .font(.system(size: 11, weight: .medium))
-                .foregroundColor(pending ? Theme.textMuted : Theme.textSecondary)
+                .foregroundColor(Theme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -187,7 +178,10 @@ struct WhatsNewView: View {
             }
             .padding(.horizontal, 20)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Fixed height so the changelog card above gets the rest of the
+        // panel. Split three ways, it was too short and cut off its list.
+        .frame(maxWidth: .infinity)
+        .frame(height: 116)
         .contentShape(Rectangle())
         .onTapGesture { if clickable { action() } }
         .onHover { h in
