@@ -68,7 +68,7 @@ These were real, but not the stutter.
 - **Patching game code makes Rosetta drop its ahead-of-time translation for the whole executable.**
   - A one-byte write anywhere in `__TEXT` puts all of the game on the JIT, and BO3MacFix makes about 30 such writes.
   - A pre-patched executable would put the game back on the AOT path. [BO3MacFix PR #76](https://github.com/InvoxiPlayGames/BO3MacFix/pull/76) does this.
-- **Aspyr's job workers spin rather than sleep.** PR #76 adds a 2 ms idle wait for them.
+- **A job worker at 100% was the sort, not spinning.** An earlier sample showed one job worker at 100% in a comparison function, which looked like workers spinning instead of sleeping. It was the insertion sort above. Idle job workers wait on a condition variable with a 1 ms timeout (`0x100109bde` with a timeout of 1, returning `0x102` on timeout), so they wake about a thousand times a second but don't busy-loop. [PR #76](https://github.com/InvoxiPlayGames/BO3MacFix/pull/76) adds a 2 ms idle wait for them; with the sort fixed, the gain from that is probably small.
 
 ## Ruled out
 
