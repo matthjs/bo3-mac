@@ -33,11 +33,15 @@
 #define ADDR_StreamImages_InsertionSort 0x15273cb // func - name is a guess, sorts the image streamer's priority list
 #define ADDR_StreamImages_Compare 0x1527878 // func - name is a guess, its comparison (ignores its first argument)
 #define ADDR_StreamImages_QuickSort 0x152746c // func - name is a guess, same list, same comparison
+#define ADDR_WICConvertBitmapSource 0x44c36 // func - a stub that returns S_OK without converting
+#define ADDR_load_workshop_texture_create 0xe4a43c // code - texture creation inside load_workshop_texture
+#define ADDR_workshop_texture_created 0x126dad2 // func - name is a guess, called with (srv, &desc, 0) after creating the view
 
 //globals
 #define ADDR_g_workshopMapId 0x3087dac // char[] - name is a guess
 #define ADDR_g_emuPath 0x4ae9c00 // char[] - name is a guess
 #define ADDR_sSessionModeState 0x6939a14 // int
+#define ADDR_g_d3d11Device 0x113c0b18 // ID3D11Device * - name is a guess
 
 //function patches
 #define ADDR_Scr_ErrorInternalPatch 0x11a238e // mid-func
