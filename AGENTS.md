@@ -60,7 +60,10 @@ not "fix" these to arm64 or universal.
    launcher: it ignores arguments and reads its menu from stdin, which is empty
    there, so it spins redrawing the menu forever.
 6. `LoadingOverlay` covers the black gap until the game window appears.
-   `ControllerManager` is suspended while the game runs and resumed on exit.
+   `ControllerManager` is suspended while the game runs. When the game exits,
+   the launcher quits if the game's window had appeared (or it ran over five
+   minutes); otherwise the launch failed, so it resumes controllers and comes
+   to the front. Don't use the exit status: the game aborts on every quit.
 
 ## Building
 
@@ -186,8 +189,11 @@ installer menu, which is handy for testing outside the launcher.
   so the Havok Visual Debugger server the Mac port leaves on never opens.
   It also bounds the image streamer's per-frame insertion sort and falls back to
   the engine's quicksort, which removed a 550 ms hitch every second on Leviathan
-  (`docs/leviathan-stutter.md`). Like every patch, that hook checks the expected
-  bytes first. Those fixes are worth offering upstream.
+  (`docs/leviathan-stutter.md`). It also loads Workshop preview and loading
+  images with ImageIO: the game's loader calls the Mac port's
+  `WICConvertBitmapSource`, a stub that returns success without an output, and
+  crashed, so upstream returned no texture. Like every patch, these hooks check
+  the expected bytes first. Those fixes are worth offering upstream.
 - The launcher is not sandboxed (the entitlements are empty) and uses hardened
   runtime only in Release. The game is launched unhardened, which is what makes
   `DYLD_INSERT_LIBRARIES` work.

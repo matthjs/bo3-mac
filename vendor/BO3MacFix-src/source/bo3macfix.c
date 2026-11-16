@@ -25,6 +25,8 @@
 #include <arpa/inet.h>
 
 #include <CoreFoundation/CoreFoundation.h>
+#include <CoreGraphics/CoreGraphics.h>
+#include <ImageIO/ImageIO.h>
 #include <IOKit/hid/IOHIDDevice.h>
 
 #include "bo3macnative.h"
@@ -135,12 +137,6 @@ install_hook_name(LobbyMsgRW_PrepWriteMsg, bool, void *lobbyMsg, uint8_t *data, 
         MSG_WriteByte(lobbyMsg, ZBR_PREFIX_BYTE2);
     }
     return orig;
-}
-
-// Aspyr's png to texture conversion code is buggy and always crashes.
-// Return no texture so we don't crash upon load.
-install_hook_name(load_workshop_texture, void *, const char *path) {
-    return NULL;
 }
 
 // Prints out logs to stdout that would normally go in the logging window
@@ -740,6 +736,183 @@ install_hook_name(ASL_ToNativePath, void *, void *asl, char *in_str)
     return orig_ASL_ToNativePath(asl, in_str);
 }
 
+// Workshop maps and mods show previewimage.png / loadingimage.png in the menus.
+// The game decodes them with WIC and converts the frame to 32bpp BGR with
+// WICConvertBitmapSource, but on the Mac that function is a stub that returns
+// S_OK without setting its output, so the game calls through a NULL pointer
+// and crashes when you hover over a workshop map. Decode the PNG with ImageIO
+// instead and create the texture the way the game does: a B8G8R8X8 texture
+// and a shader resource view, made through the game's D3D11 device. Return
+// NULL on any failure, which makes the caller fall back to its default image.
+typedef struct {
+    uint32_t width, height, mip_levels, array_size, format;
+    uint32_t sample_count, sample_quality, usage, bind_flags, cpu_access_flags, misc_flags;
+} d3d11_texture2d_desc;
+typedef struct {
+    const void *sys_mem;
+    uint32_t sys_mem_pitch, sys_mem_slice_pitch;
+} d3d11_subresource_data;
+typedef struct {
+    uint32_t format, view_dimension;
+    uint32_t most_detailed_mip, mip_levels;
+    uint64_t unused;
+} d3d11_srv_desc;
+typedef int32_t (*d3d11_create_texture2d_t)(void *device, const d3d11_texture2d_desc *desc, const d3d11_subresource_data *data, void **texture);
+typedef int32_t (*d3d11_create_srv_t)(void *device, void *resource, const d3d11_srv_desc *desc, void **srv);
+typedef uint32_t (*com_release_t)(void *object);
+typedef void (*workshop_texture_created_t)(void *srv, const d3d11_texture2d_desc *desc, int unused);
+
+#define DXGI_FORMAT_B8G8R8X8_UNORM 88
+#define D3D11_SRV_DIMENSION_TEXTURE2D 4
+#define D3D11_BIND_SHADER_RESOURCE 8
+#define WORKSHOP_TEXTURE_MAX_SIZE 4096
+
+static void **workshop_texture_device;
+static workshop_texture_created_t workshop_texture_created;
+
+// The game builds these paths from its own folder, which can be the emulated
+// C:/Emu/AppAssets or the working directory; resolve them the way
+// ASL_ToNativePath does. Workshop items are already native Steam paths.
+static void resolve_workshop_texture_path(const char *in, char *out, size_t out_len) {
+    char cwd[1025];
+    get_cached_cwd(cwd, sizeof(cwd));
+    size_t cwdlen = strlen(cwd);
+    const char *rest = NULL;
+    if (cwdlen > 0 && strncmp(cwd, in, cwdlen) == 0)
+        rest = in + cwdlen;
+    else if (strncmp(EMUPATH_B, in, strlen(EMUPATH_B)) == 0 || strncmp(EMUPATH_F, in, strlen(EMUPATH_F)) == 0)
+        rest = in + strlen(EMUPATH_F);
+    if (rest != NULL && cwdlen > 0)
+        snprintf(out, out_len, "%s/%s/%s", cwd, Basegame_Path, rest);
+    else
+        strlcpy(out, in, out_len);
+    for (char *c = out; *c != '\0'; c++)
+        if (*c == '\\') *c = '/';
+}
+
+// Returns a malloc'd BGRX pixel buffer, or NULL.
+static uint8_t *decode_workshop_texture(const char *path, uint32_t *out_width, uint32_t *out_height) {
+    CFURLRef url = CFURLCreateFromFileSystemRepresentation(NULL, (const UInt8 *)path, strlen(path), false);
+    if (url == NULL)
+        return NULL;
+    CGImageSourceRef source = CGImageSourceCreateWithURL(url, NULL);
+    CFRelease(url);
+    if (source == NULL)
+        return NULL;
+    CGImageRef image = CGImageSourceCreateImageAtIndex(source, 0, NULL);
+    CFRelease(source);
+    if (image == NULL)
+        return NULL;
+
+    size_t width = CGImageGetWidth(image), height = CGImageGetHeight(image);
+    if (width == 0 || height == 0) {
+        CGImageRelease(image);
+        return NULL;
+    }
+    // keep absurd images from costing a lot of memory, scaling down if needed
+    if (width > WORKSHOP_TEXTURE_MAX_SIZE || height > WORKSHOP_TEXTURE_MAX_SIZE) {
+        double scale = (double)WORKSHOP_TEXTURE_MAX_SIZE / (width > height ? width : height);
+        width = width * scale > 1 ? (size_t)(width * scale) : 1;
+        height = height * scale > 1 ? (size_t)(height * scale) : 1;
+    }
+
+    uint8_t *pixels = calloc(width * height, 4);
+    CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+    // B8G8R8X8 in memory: 32-bit little endian, alpha skipped, like WIC's 32bppBGR
+    CGContextRef context = pixels && space ? CGBitmapContextCreate(pixels, width, height, 8, width * 4, space,
+        kCGImageAlphaNoneSkipFirst | kCGBitmapByteOrder32Little) : NULL;
+    if (space != NULL)
+        CGColorSpaceRelease(space);
+    if (context == NULL) {
+        free(pixels);
+        CGImageRelease(image);
+        return NULL;
+    }
+    CGContextSetInterpolationQuality(context, kCGInterpolationHigh);
+    CGContextDrawImage(context, CGRectMake(0, 0, width, height), image);
+    CGContextRelease(context);
+    CGImageRelease(image);
+
+    *out_width = (uint32_t)width;
+    *out_height = (uint32_t)height;
+    return pixels;
+}
+
+install_hook_name(load_workshop_texture, void *, const char *path) {
+    if (workshop_texture_device == NULL || path == NULL)
+        return NULL;
+
+    char native_path[4096];
+    resolve_workshop_texture_path(path, native_path, sizeof(native_path));
+    uint32_t width, height;
+    uint8_t *pixels = decode_workshop_texture(native_path, &width, &height);
+    if (pixels == NULL)
+        return NULL;
+
+    void *device = *workshop_texture_device;
+    if (device == NULL) {
+        free(pixels);
+        return NULL;
+    }
+    void **device_vtable = *(void ***)device;
+
+    d3d11_texture2d_desc desc = {
+        .width = width, .height = height, .mip_levels = 1, .array_size = 1,
+        .format = DXGI_FORMAT_B8G8R8X8_UNORM, .sample_count = 1,
+        .bind_flags = D3D11_BIND_SHADER_RESOURCE,
+    };
+    d3d11_subresource_data data = { pixels, width * 4, width * 4 * height };
+    void *texture = NULL;
+    int32_t hr = ((d3d11_create_texture2d_t)device_vtable[5])(device, &desc, &data, &texture);
+    free(pixels);
+    if (hr < 0 || texture == NULL)
+        return NULL;
+
+    d3d11_srv_desc srv_desc = {
+        .format = DXGI_FORMAT_B8G8R8X8_UNORM, .view_dimension = D3D11_SRV_DIMENSION_TEXTURE2D,
+        .most_detailed_mip = 0, .mip_levels = UINT32_MAX,
+    };
+    void *srv = NULL;
+    hr = ((d3d11_create_srv_t)device_vtable[7])(device, texture, &srv_desc, &srv);
+    if (hr < 0 || srv == NULL) {
+        ((com_release_t)(*(void ***)texture)[2])(texture);
+        return NULL;
+    }
+    workshop_texture_created(srv, &desc, 0);
+    ((com_release_t)(*(void ***)texture)[2])(texture);
+    return srv;
+}
+
+static void install_workshop_texture_fix(void) {
+    // The hook always goes in, because the game's own loader crashes. Only
+    // create textures on the build the device global and helper below come
+    // from; anywhere else the hook returns NULL, as BO3MacFix always did.
+    install_hook_load_workshop_texture((void *)(game_base_address + ADDR_load_workshop_texture));
+
+    // the stub WICConvertBitmapSource: push rbp; mov rbp, rsp; xor eax, eax; pop rbp; ret
+    static const uint8_t wic_convert_stub[] = { 0x55, 0x48, 0x89, 0xe5, 0x31, 0xc0, 0x5d, 0xc3 };
+    // the loader's texture creation: lea r12, [device]; ... CreateTexture2D (vtable 0x28),
+    // a B8G8R8X8 TEXTURE2D view (vtable 0x38), then call the helper with (srv, &desc, 0)
+    static const uint8_t create_texture[] = {
+        0x4c, 0x8d, 0x25, 0xd5, 0x66, 0x57, 0x10, 0x49, 0x8b, 0x3c, 0x24, 0x48,
+        0x8b, 0x07, 0x4c, 0x8d, 0xbd, 0x68, 0xfb, 0xff, 0xff, 0x48, 0x89, 0xde,
+        0x4c, 0x89, 0xf9, 0xff, 0x50, 0x28, 0x48, 0x8d, 0x95, 0x38, 0xfb, 0xff,
+        0xff, 0x0f, 0x57, 0xc0, 0x0f, 0x11, 0x42, 0x08, 0x48, 0xb8, 0x58, 0x00,
+        0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x48, 0x89, 0x02, 0xc7, 0x42, 0x0c,
+        0xff, 0xff, 0xff, 0xff, 0x49, 0x8b, 0x3c, 0x24, 0x48, 0x8b, 0x07, 0x49,
+        0x8b, 0x37, 0x4c, 0x8d, 0xa5, 0x70, 0xfb, 0xff, 0xff, 0x4c, 0x89, 0xe1,
+        0xff, 0x50, 0x38, 0x49, 0x8b, 0x3c, 0x24, 0x31, 0xd2, 0x48, 0x89, 0xde,
+        0xe8, 0x31, 0x36, 0x42, 0x00
+    };
+    if (memcmp((void *)(game_base_address + ADDR_WICConvertBitmapSource), wic_convert_stub, sizeof(wic_convert_stub)) != 0 ||
+        memcmp((void *)(game_base_address + ADDR_load_workshop_texture_create), create_texture, sizeof(create_texture)) != 0) {
+        printf("[BO3MacFix] unexpected game build, workshop preview images stay disabled\n");
+        return;
+    }
+    workshop_texture_device = (void **)(game_base_address + ADDR_g_d3d11Device);
+    workshop_texture_created = (workshop_texture_created_t)(game_base_address + ADDR_workshop_texture_created);
+}
+
 bool ISteamApps_BIsSubscribedApp(void *interface, AppId_t app) {
     return steam_dlc_owns(app);
 }
@@ -907,7 +1080,7 @@ __attribute__((constructor)) static void dylib_main() {
 
     // apply the hooks
     install_hook_HKAI_InitMapData((void *)(game_base_address + ADDR_HKAI_InitMapData));
-    install_hook_load_workshop_texture((void *)(game_base_address + ADDR_load_workshop_texture));
+    install_workshop_texture_fix();
     install_hook_Live_SystemInfo((void *)(game_base_address + ADDR_Live_SystemInfo));
     install_hook_someLoggingFunction((void *)(game_base_address + ADDR_someLoggingFunction));
     //install_hook_someWindowCreationFunction((void *)(game_base_address + ADDR_someWindowCreationFunction));

@@ -208,13 +208,29 @@ struct GameLauncher {
     }
 
     private static func monitorPid(_ pid: pid_t) {
+        let started = Date()
         DispatchQueue.global(qos: .utility).async {
             var status: Int32 = 0
             waitpid(pid, &status, 0)
             DispatchQueue.main.async {
                 isGameRunning = false
+                // The launcher has nothing left to do once the game has run, so
+                // quit with it. The exit status can't tell a normal quit from a
+                // failure (the game aborts on every quit), so judge by whether
+                // its window ever came up, or by run time if the overlay was
+                // closed early or missed the window.
+                let played = LoadingOverlay.shared.gameWindowAppeared
+                    || Date().timeIntervalSince(started) > 300
                 LoadingOverlay.shared.dismiss()
+                if played {
+                    NSApp.terminate(nil)
+                    return
+                }
                 ControllerManager.shared.resume()
+                // The game failed to start. Bring the launcher back to the
+                // front: macOS activates whichever app was in front before the
+                // game, which would leave it hidden behind other windows.
+                NSApp.activate(ignoringOtherApps: true)
             }
         }
     }

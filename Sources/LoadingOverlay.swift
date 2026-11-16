@@ -23,9 +23,15 @@ final class LoadingOverlay {
 
     var isShowing: Bool { !windows.isEmpty }
 
+    /// Whether the game's window showed up since the last `show()`. The
+    /// launcher only quits after the game exits if it did, so a game that
+    /// fails to start leaves the launcher open.
+    private(set) var gameWindowAppeared = false
+
     func show() {
         guard windows.isEmpty else { return }
         deadline = Date().addingTimeInterval(timeout)
+        gameWindowAppeared = false
 
         for screen in NSScreen.screens {
             let window = NSWindow(contentRect: screen.frame,
@@ -70,7 +76,10 @@ final class LoadingOverlay {
     }
 
     private func tick() {
-        if Date() >= deadline || Self.gameWindowIsUp() {
+        if Self.gameWindowIsUp() {
+            gameWindowAppeared = true
+            dismiss()
+        } else if Date() >= deadline {
             dismiss()
         }
     }

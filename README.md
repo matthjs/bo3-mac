@@ -94,6 +94,10 @@ friends-only message filter, branding). This fork adds:
   [Leviathan](https://steamcommunity.com/sharedfiles/filedetails/?id=2112576356),
   which went from a hitch every second to smooth play. Details in
   [`docs/leviathan-stutter.md`](docs/leviathan-stutter.md).
+- **Preview and loading images for Workshop maps and mods.** The Mac port's
+  PNG loading crashed the game, so BO3MacFix used to switch it off and the
+  menus showed no picture for custom maps. BO3MacFix now loads the images with
+  macOS's own decoder.
 - **Safer, more reliable map conversion.** The navmesh converter is started
   directly instead of through a shell command built from the map name, its
   output is read to the end, and a map is converted again when its navmesh
