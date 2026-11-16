@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.0.2 (build 10) - 2026-11-17
+
+Launcher:
+
+- The Input Monitoring prompt only appears when a PlayStation controller
+  connects, and says what it's for: DualSense rumble. The rumble shim opens the
+  controller with `IOHIDManager`, which macOS gates behind Input Monitoring
+  (without it, `IOHIDManagerOpen` fails with `0xe00002e2`); the launcher reads
+  controllers through GameController and needs nothing. The old startup prompt
+  said the permission was needed to launch the game, which it isn't.
+
+BO3MacFix:
+
+- The startup intro (the Activision/Treyarch logo sequence and the Aspyr logo,
+  played as one cinematic that can't be skipped) no longer plays. The function
+  that starts it returns early when its dvar is off; BO3MacFix turns that `je`
+  into a `jmp`, after checking the expected bytes.
+
 ## 2.0.1 (build 9) - 2026-11-17
 
 Launcher:

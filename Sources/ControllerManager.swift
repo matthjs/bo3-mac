@@ -62,6 +62,9 @@ final class ControllerManager: ObservableObject {
     private func bind(_ controller: GCController) {
         isConnected = true
         controllerType = Self.detectType(controller)
+        if controllerType == .playstation {
+            DispatchQueue.main.async { PermissionChecker.promptForRumbleIfNeeded() }
+        }
 
         let gp = controller.extendedGamepad
 

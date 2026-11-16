@@ -115,6 +115,7 @@ struct WhatsNewView: View {
             }
 
             changelogItem("Workshop maps show their preview images")
+            changelogItem("The game skips its startup intro videos")
             changelogItem("No more stutter on big custom maps")
             changelogItem("One-click Wine install for custom maps")
             changelogItem("Steam's Play button can start the game directly")
