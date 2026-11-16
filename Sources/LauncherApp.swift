@@ -64,24 +64,30 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ) { [weak self] _ in self?.stripMenuBar() }
     }
 
+    /// Hides the menus the launcher doesn't use. They're hidden rather than
+    /// removed because SwiftUI owns the main menu: when it rebuilds it, which
+    /// opening a bo3launcher:// URL triggers, it inserts items at the indices it
+    /// expects, and removed items made `NSMenu insertItem:atIndex:` abort.
     private func stripMenuBar() {
         guard let mainMenu = NSApp.mainMenu else { return }
-        let removeTitles: Set<String> = ["File", "Edit", "View", "Window", "Format"]
+        let hideTitles: Set<String> = ["File", "Edit", "View", "Window", "Format"]
         for item in mainMenu.items {
             let title = item.submenu?.title ?? item.title
-            if removeTitles.contains(title) {
-                mainMenu.removeItem(item)
+            if hideTitles.contains(title) && !item.isHidden {
+                item.isHidden = true
             }
         }
 
         if let appMenu = mainMenu.items.first?.submenu {
-            let keep = appMenu.items.filter {
-                $0.title.lowercased().contains("about") ||
-                $0.title.lowercased().contains("quit") ||
-                ($0.isSeparatorItem && $0 == appMenu.items.last(where: { $0.isSeparatorItem }))
+            let lastSeparator = appMenu.items.last(where: { $0.isSeparatorItem })
+            for item in appMenu.items {
+                let keep = item.title.lowercased().contains("about") ||
+                    item.title.lowercased().contains("quit") ||
+                    item == lastSeparator
+                if !keep && !item.isHidden {
+                    item.isHidden = true
+                }
             }
-            appMenu.removeAllItems()
-            for item in keep { appMenu.addItem(item) }
         }
     }
 }
