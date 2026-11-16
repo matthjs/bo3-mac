@@ -633,6 +633,57 @@ static int bind_new(int fd, const struct sockaddr *addr, socklen_t len) {
 }
 DYLD_INTERPOSE(bind_new, bind);
 
+// Each frame the image streamer re-sorts its list of streamed images by
+// priority. When the list is the same length as last frame it uses an
+// insertion sort, which is quick if the order barely changed but quadratic
+// when many priorities change at once. Leviathan streams about 29,000 images,
+// and there the sort took about 550 ms roughly once a second: the frame waits
+// for it, so 120 fps dropped to 20-40 fps. Run the same insertion sort with a
+// work budget, and finish with the engine's own quicksort (the path it takes
+// when the length changed) once the budget runs out. That bounds the sort at
+// a few milliseconds.
+typedef bool (*stream_images_compare_t)(void *unused, uint32_t a, uint32_t b);
+typedef void (*stream_images_quicksort_t)(uint32_t *begin, uint32_t *end, void *unused);
+static stream_images_compare_t stream_images_compare;
+static stream_images_quicksort_t stream_images_quicksort;
+
+install_hook_name(StreamImages_InsertionSort, void, uint32_t *begin, uint32_t *end)
+{
+    size_t count = end - begin;
+    size_t moves = 0, budget = 8 * count + 256;
+    for (uint32_t *i = begin + 1; i < end; i++) {
+        uint32_t value = *i;
+        uint32_t *j = i;
+        while (j > begin && stream_images_compare(NULL, value, j[-1])) {
+            *j = j[-1];
+            j--;
+            if (++moves > budget) {
+                *j = value;
+                char unused;
+                stream_images_quicksort(begin, end, &unused);
+                return;
+            }
+        }
+        *j = value;
+    }
+}
+
+static void install_stream_sort_fix(void) {
+    // Only hook the build these addresses come from.
+    static const uint8_t insertion_sort[] = { 0x55, 0x48, 0x89, 0xe5, 0x41, 0x57, 0x41, 0x56, 0x41, 0x55, 0x41, 0x54, 0x53, 0x48, 0x83, 0xec, 0x18 };
+    static const uint8_t compare[] = { 0x55, 0x48, 0x89, 0xe5, 0x89, 0xf0, 0x48, 0x8d, 0x3d };
+    static const uint8_t quicksort[] = { 0x55, 0x48, 0x89, 0xe5, 0x41, 0x57, 0x41, 0x56, 0x41, 0x55, 0x41, 0x54, 0x53, 0x48, 0x83, 0xec, 0x28, 0x49, 0x89, 0xd4 };
+    if (memcmp((void *)(game_base_address + ADDR_StreamImages_InsertionSort), insertion_sort, sizeof(insertion_sort)) != 0 ||
+        memcmp((void *)(game_base_address + ADDR_StreamImages_Compare), compare, sizeof(compare)) != 0 ||
+        memcmp((void *)(game_base_address + ADDR_StreamImages_QuickSort), quicksort, sizeof(quicksort)) != 0) {
+        printf("[BO3MacFix] unexpected game build, not patching the image streamer sort\n");
+        return;
+    }
+    stream_images_compare = (stream_images_compare_t)(game_base_address + ADDR_StreamImages_Compare);
+    stream_images_quicksort = (stream_images_quicksort_t)(game_base_address + ADDR_StreamImages_QuickSort);
+    install_hook_StreamImages_InsertionSort((void *)(game_base_address + ADDR_StreamImages_InsertionSort));
+}
+
 #define EMUPATH_B "C:\\Emu\\AppAssets"
 #define EMUPATH_F "C:/Emu/AppAssets"
 install_hook_name(ASL_ToNativePath, void *, void *asl, char *in_str)
@@ -873,6 +924,7 @@ __attribute__((constructor)) static void dylib_main() {
     install_hook_CL_FirstSnapshot((void *)(game_base_address + ADDR_CL_FirstSnapshot));
     install_hook_Com_GetBuildIntField((void *)(game_base_address + ADDR_Com_GetBuildIntField));
     install_hook_LiveSteam_RunEveryFrame((void *)(game_base_address + ADDR_LiveSteam_RunEveryFrame));
+    install_stream_sort_fix();
     //install_hook_SDL_GameControllerInitMappings((void *)(game_base_address + ADDR_SDL_GameControllerInitMappings));
 
     // set up functions that we later call
