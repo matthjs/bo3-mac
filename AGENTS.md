@@ -214,7 +214,7 @@ installer menu, which is handy for testing outside the launcher.
 | `ControllerManager.swift` | Controller detection, Play on the action button, suspended while the game runs |
 | `LoadingOverlay.swift` | Full-screen cover until the game window appears (240 s timeout) |
 | `UpdateChecker.swift` | Manual update check against this fork's GitHub releases |
-| `AppMover.swift`, `PermissionChecker.swift` | Move to /Applications, Input Monitoring permission prompt |
+| `AppMover.swift`, `PermissionChecker.swift` | Move to /Applications, Input Monitoring prompt (only for DualSense rumble, shown when a PlayStation controller connects) |
 | `WhatsNewView.swift`, `SetupView.swift`, `Theme.swift` | UI |
 
 ## Style

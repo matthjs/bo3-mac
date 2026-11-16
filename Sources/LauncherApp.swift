@@ -44,7 +44,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         stripMenuBar()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            PermissionChecker.promptIfNeeded()
             // Without the game, the setup screen already says so. Prompting
             // here too would open with a "Game Not Found" dialog.
             if MacFixInstaller.isGamePresent {
