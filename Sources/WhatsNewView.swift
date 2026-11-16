@@ -122,13 +122,11 @@ struct WhatsNewView: View {
                             .foregroundColor(Theme.textPrimary)
                     }
 
-                    changelogItem("Big custom maps such as Leviathan no longer stutter every second")
-                    changelogItem("One-click Wine install, so custom Workshop maps load")
-                    changelogItem("Updated Workshop maps are converted again instead of reusing stale data")
-                    changelogItem("The debugger port the game left open is now closed")
-                    changelogItem("Friends-Only Messages option in Options")
-                    changelogItem("PlayStation prompts only when a PlayStation controller is connected")
-                    changelogItem("Updates come from this fork's GitHub releases")
+                    changelogItem("Workshop maps show their preview images")
+                    changelogItem("The launcher closes when you quit the game")
+                    changelogItem("No more stutter on big maps like Leviathan")
+                    changelogItem("One-click Wine install for custom maps")
+                    changelogItem("Steam's Play button can start the game directly")
                 }
                 .padding(16)
             }

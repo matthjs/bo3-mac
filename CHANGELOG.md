@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.0.1 (build 9) - 2026-11-17
+
+Launcher:
+
+- The launcher quits when the game exits, instead of staying open behind
+  other windows. If the game exits before its window ever appeared (it failed
+  to start), the launcher stays open and comes to the front. The exit status
+  can't tell the two apart because the game aborts on every quit, so
+  `monitorPid` uses `LoadingOverlay.gameWindowAppeared`, or a run time over
+  five minutes.
+- Shorter What's New list with the main features.
+
+BO3MacFix:
+
+- Workshop maps and mods show their preview image in the menus and their
+  loading image when a map loads. The game's loader converts the PNG with the
+  Mac port's `WICConvertBitmapSource`, a stub that returns `S_OK` without
+  setting its output, so it called through a NULL pointer and crashed; upstream
+  BO3MacFix stubbed the loader out. The `load_workshop_texture` hook now decodes
+  with ImageIO and creates the same B8G8R8X8 texture and view through the
+  game's D3D11 device, after checking the expected bytes.
+
 ## 2.0.0 (build 8) - 2026-11-16
 
 First release of this fork. BO3MacFix:
