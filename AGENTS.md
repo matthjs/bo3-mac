@@ -91,6 +91,11 @@ reading the shim log at `~/Library/Logs/bo3-rumble.log`.
 
 ## Releasing / versioning
 
+This fork numbers its releases from 2.0.0, apart from redxam's 1.x, and the UI
+shows the number with a "· fork" label. Keep `MARKETING_VERSION` plain numbers:
+macOS allows at most three components, and `UpdateChecker` compares them
+numerically.
+
 A version bump touches all of these. Keep them consistent:
 
 - `project.yml`: `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` (the build number)

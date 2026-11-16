@@ -305,7 +305,9 @@ struct GameLauncher {
 
     /// Read from the bundle, never written out as a literal. A hardcoded string
     /// here went stale and the launcher reported v1.1.0 for three releases.
+    /// The fork numbers its releases from 2.0.0, apart from redxam's 1.x, and
+    /// says so next to the number.
     static var gameVersion: String {
-        "v" + (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0")
+        "v" + (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0") + " · fork"
     }
 }

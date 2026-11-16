@@ -122,12 +122,13 @@ struct WhatsNewView: View {
                             .foregroundColor(Theme.textPrimary)
                     }
 
+                    changelogItem("Big custom maps such as Leviathan no longer stutter every second")
                     changelogItem("One-click Wine install, so custom Workshop maps load")
                     changelogItem("Updated Workshop maps are converted again instead of reusing stale data")
-                    changelogItem("Deleting a mod no longer freezes the launcher")
+                    changelogItem("The debugger port the game left open is now closed")
+                    changelogItem("Friends-Only Messages option in Options")
+                    changelogItem("PlayStation prompts only when a PlayStation controller is connected")
                     changelogItem("Updates come from this fork's GitHub releases")
-                    changelogItem("Game audio follows your Mac's output device")
-                    changelogItem("PlayStation button prompts and DualSense rumble")
                 }
                 .padding(16)
             }
