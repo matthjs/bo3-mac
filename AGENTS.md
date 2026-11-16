@@ -60,7 +60,10 @@ not "fix" these to arm64 or universal.
    launcher: it ignores arguments and reads its menu from stdin, which is empty
    there, so it spins redrawing the menu forever.
 6. `LoadingOverlay` covers the black gap until the game window appears.
-   `ControllerManager` is suspended while the game runs and resumed on exit.
+   `ControllerManager` is suspended while the game runs. When the game exits,
+   the launcher quits if the game's window had appeared (or it ran over five
+   minutes); otherwise the launch failed, so it resumes controllers and comes
+   to the front. Don't use the exit status: the game aborts on every quit.
 
 ## Building
 
