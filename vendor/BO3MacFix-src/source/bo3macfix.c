@@ -19,6 +19,7 @@
 #include <sys/wait.h>
 #include <crt_externs.h>
 #include <CommonCrypto/CommonDigest.h>
+#include <os/lock.h>
 
 #include <CoreFoundation/CoreFoundation.h>
 #include <IOKit/hid/IOHIDDevice.h>
@@ -564,13 +565,56 @@ DYLD_INTERPOSE(IOHIDDeviceGetProperty_hook, IOHIDDeviceGetProperty);
 
 int sandbox_init_with_parameters(const char *profile, uint64_t flags, const char *const parameters[], char **errorbuf);
 
+// The game resolves paths through ASL_ToNativePath constantly while it streams
+// assets, and getcwd() costs several syscalls under Rosetta. On Leviathan it
+// took up to a fifth of the file thread's time.
+// The working directory only changes through chdir/fchdir, so cache it and
+// drop the cache when the game calls either.
+static os_unfair_lock cwd_lock = OS_UNFAIR_LOCK_INIT;
+static char cached_cwd[1025];
+static bool cached_cwd_valid = false;
+
+static void get_cached_cwd(char *out, size_t out_len) {
+    os_unfair_lock_lock(&cwd_lock);
+    if (!cached_cwd_valid) {
+        cached_cwd_valid = getcwd(cached_cwd, sizeof(cached_cwd)) != NULL;
+        if (!cached_cwd_valid)
+            cached_cwd[0] = '\0';
+    }
+    strlcpy(out, cached_cwd, out_len);
+    os_unfair_lock_unlock(&cwd_lock);
+}
+
+static void invalidate_cached_cwd(void) {
+    os_unfair_lock_lock(&cwd_lock);
+    cached_cwd_valid = false;
+    os_unfair_lock_unlock(&cwd_lock);
+}
+
+static int chdir_new(const char *path) {
+    int ret = chdir(path);
+    invalidate_cached_cwd();
+    return ret;
+}
+DYLD_INTERPOSE(chdir_new, chdir);
+
+static int fchdir_new(int fd) {
+    int ret = fchdir(fd);
+    invalidate_cached_cwd();
+    return ret;
+}
+DYLD_INTERPOSE(fchdir_new, fchdir);
+
 #define EMUPATH_B "C:\\Emu\\AppAssets"
 #define EMUPATH_F "C:/Emu/AppAssets"
 install_hook_name(ASL_ToNativePath, void *, void *asl, char *in_str)
 {
     char cwd[1025];
-    getcwd(cwd, sizeof(cwd));
+    get_cached_cwd(cwd, sizeof(cwd));
     size_t cwdlen = strlen(cwd);
+    // an empty cwd would match every path and redirect all of them
+    if (cwdlen == 0)
+        return orig_ASL_ToNativePath(asl, in_str);
 
     char newpath[4096] = { 0 };
     char *in_filename = NULL;

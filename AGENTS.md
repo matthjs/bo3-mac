@@ -168,8 +168,10 @@ installer menu, which is handy for testing outside the launcher.
   by "launch without Steam" and non-Steam installs), and fixes map conversion
   (`posix_spawn` instead of a shell command built from the map name, the
   converter's output read to the end, reconversion when a map's navmesh hash
-  changes) plus a few small memory and string bugs. Those fixes are worth
-  offering upstream.
+  changes) plus a few small memory and string bugs. It also caches the working
+  directory in the `ASL_ToNativePath` hook (`getcwd` on every path took up to
+  a fifth of the file thread's time).
+  Those fixes are worth offering upstream.
 - The launcher is not sandboxed (the entitlements are empty) and uses hardened
   runtime only in Release. The game is launched unhardened, which is what makes
   `DYLD_INSERT_LIBRARIES` work.
