@@ -192,7 +192,9 @@ installer menu, which is handy for testing outside the launcher.
   (`docs/leviathan-stutter.md`). It also loads Workshop preview and loading
   images with ImageIO: the game's loader calls the Mac port's
   `WICConvertBitmapSource`, a stub that returns success without an output, and
-  crashed, so upstream returned no texture. Like every patch, these hooks check
+  crashed, so upstream returned no texture. And it skips the unskippable startup
+  intro (Activision/Treyarch and Aspyr logos) by taking the branch the game
+  takes when its intro dvar is off. Like every patch, these hooks check
   the expected bytes first. Those fixes are worth offering upstream.
 - The launcher is not sandboxed (the entitlements are empty) and uses hardened
   runtime only in Release. The game is launched unhardened, which is what makes

@@ -680,6 +680,27 @@ static void install_stream_sort_fix(void) {
     install_hook_StreamImages_InsertionSort((void *)(game_base_address + ADDR_StreamImages_InsertionSort));
 }
 
+// The game starts with the Activision/Treyarch logo sequence followed by the
+// Aspyr logo, played as one cinematic ("BO3_Global_Logo_LogoSequence;AspyrLogo")
+// that can't be skipped. The function that starts it checks a dvar first and
+// returns without playing anything when that dvar is off, so take that branch
+// unconditionally: turn its `je` into a `jmp`.
+static void install_intro_skip(void) {
+    // cmp byte [rbx+0x8590], 0; jne; mov rdi, [dvar]; call Dvar_GetBool; test al, al;
+    // je skip; lea rdi, ["BO3_Global_Logo_LogoSequence;AspyrLogo"]
+    static const uint8_t intro_check[] = {
+        0x80, 0xbb, 0x90, 0x85, 0x00, 0x00, 0x00, 0x75, 0x45, 0x48, 0x8b, 0x3d,
+        0x0d, 0xa7, 0xa6, 0x10, 0xe8, 0x2c, 0xaf, 0x12, 0x00, 0x84, 0xc0, 0x74,
+        0x35, 0x48, 0x8d, 0x3d, 0xde, 0x37, 0x85, 0x00
+    };
+    if (memcmp((void *)(game_base_address + ADDR_PlayIntro_DvarCheck), intro_check, sizeof(intro_check)) != 0) {
+        printf("[BO3MacFix] unexpected game build, not skipping the intro\n");
+        return;
+    }
+    uint8_t jmp_short = 0xeb;
+    DobbyCodePatch((void *)(game_base_address + ADDR_PlayIntro_DvarCheck + ADDR_PlayIntro_Je_Offset), &jmp_short, sizeof(jmp_short));
+}
+
 #define EMUPATH_B "C:\\Emu\\AppAssets"
 #define EMUPATH_F "C:/Emu/AppAssets"
 install_hook_name(ASL_ToNativePath, void *, void *asl, char *in_str)
@@ -1098,6 +1119,7 @@ __attribute__((constructor)) static void dylib_main() {
     install_hook_Com_GetBuildIntField((void *)(game_base_address + ADDR_Com_GetBuildIntField));
     install_hook_LiveSteam_RunEveryFrame((void *)(game_base_address + ADDR_LiveSteam_RunEveryFrame));
     install_stream_sort_fix();
+    install_intro_skip();
     //install_hook_SDL_GameControllerInitMappings((void *)(game_base_address + ADDR_SDL_GameControllerInitMappings));
 
     // set up functions that we later call

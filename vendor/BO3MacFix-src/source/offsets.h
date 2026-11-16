@@ -36,6 +36,8 @@
 #define ADDR_WICConvertBitmapSource 0x44c36 // func - a stub that returns S_OK without converting
 #define ADDR_load_workshop_texture_create 0xe4a43c // code - texture creation inside load_workshop_texture
 #define ADDR_workshop_texture_created 0x126dad2 // func - name is a guess, called with (srv, &desc, 0) after creating the view
+#define ADDR_PlayIntro_DvarCheck 0xe752e3 // code - name is a guess, the checks before the startup intro cinematic plays
+#define ADDR_PlayIntro_Je_Offset 0x17 // the `je` that skips the cinematic when the intro dvar is off
 
 //globals
 #define ADDR_g_workshopMapId 0x3087dac // char[] - name is a guess

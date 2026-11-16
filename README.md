@@ -98,6 +98,9 @@ friends-only message filter, branding). This fork adds:
   PNG loading crashed the game, so BO3MacFix used to switch it off and the
   menus showed no picture for custom maps. BO3MacFix now loads the images with
   macOS's own decoder.
+- **No startup intro.** The Activision/Treyarch and Aspyr logo videos at launch
+  can't be skipped, so BO3MacFix skips them and the game goes straight to the
+  menu.
 - **Safer, more reliable map conversion.** The navmesh converter is started
   directly instead of through a shell command built from the map name, its
   output is read to the end, and a map is converted again when its navmesh
