@@ -34,6 +34,17 @@ struct GameLauncher {
         launch()
     }
 
+    static let steamOverlayKey = "steamOverlay"
+
+    /// Loads Steam's in-game overlay (Shift+Tab) into the game. On by default.
+    static var steamOverlay: Bool {
+        UserDefaults.standard.object(forKey: steamOverlayKey) as? Bool ?? true
+    }
+
+    private static var steamOverlayDylib: String {
+        NSHomeDirectory() + "/Library/Application Support/Steam/Steam.AppBundle/Steam/Contents/MacOS/gameoverlayrenderer.dylib"
+    }
+
     static let friendsOnlyKey = "friendsOnlyMessages"
 
     /// BO3MacFix's `BO3MACFIX_FRIENDSONLY`: drops the game's instant messages
@@ -90,6 +101,14 @@ struct GameLauncher {
         var dylibs = fixDylib
         if FileManager.default.fileExists(atPath: rumbleDylib) {
             dylibs += ":" + rumbleDylib
+        }
+        // Steam loads its overlay into whatever it starts, which with Steam
+        // integration is the redirector, not the game. Load it here instead.
+        // It needs the Steam client running, so not for offline launches.
+        if steamOverlay && !launchWithoutSteam && FileManager.default.fileExists(atPath: steamOverlayDylib) {
+            dylibs += ":" + steamOverlayDylib
+            env["SteamGameId"] = steamAppID
+            env["SteamOverlayGameId"] = steamAppID
         }
         if let existing = env["DYLD_INSERT_LIBRARIES"] {
             dylibs += ":" + existing

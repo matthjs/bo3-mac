@@ -7,6 +7,7 @@ struct HeaderView: View {
     @ObservedObject private var wine = WineInstaller.shared
     @AppStorage(GameLauncher.friendsOnlyKey) private var friendsOnly = false
     @AppStorage(GameLauncher.steamPlayStartsGameKey) private var steamPlayStartsGame = false
+    @AppStorage(GameLauncher.steamOverlayKey) private var steamOverlay = true
     /// The menu is built from view state, so a plain read of
     /// `GameLauncher.isSteamIntegrated` stayed stale after installing or
     /// removing integration until the launcher restarted.
@@ -270,6 +271,8 @@ struct HeaderView: View {
             Divider()
             Toggle("Friends-Only Messages", isOn: $friendsOnly)
                 .help("Blocks in-game messages, such as invites, from players who aren't your Steam friends. Applies from the next launch.")
+            Toggle("Steam Overlay", isOn: $steamOverlay)
+                .help("Loads Steam's in-game overlay (Shift+Tab). Not used for offline launches. Applies from the next launch.")
             Divider()
             if steamIntegrated {
                 Toggle("Steam's Play Starts the Game", isOn: $steamPlayStartsGame)

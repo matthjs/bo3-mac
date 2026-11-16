@@ -126,6 +126,8 @@ friends-only message filter, branding). This fork adds:
   when Steam restores the original, and a failed install puts the original back.
   An option, **Steam's Play Starts the Game**, makes Steam's Play button start
   the game in one click instead of only opening the launcher.
+- **Steam overlay** (Shift+Tab) in games started from the launcher, on by
+  default and switchable in Options.
 - **Removed:** the game downloader (its download server is gone) and the empty
   DLC tab.
 - **Smaller fixes:** mod deletion no longer freezes the window, Workshop titles

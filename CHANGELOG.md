@@ -34,6 +34,9 @@ Launcher:
   `bo3launcher://steam-play`, and with the option on the launcher starts the
   game straight away. A failed start no longer falls back to Steam while
   integration is on, which would only reopen the launcher.
+- Steam Overlay option, on by default: the launcher loads Steam's
+  `gameoverlayrenderer.dylib` into the game, because with Steam integration
+  Steam injects it into the redirector instead. Not loaded for offline launches.
 - Removed the game downloader (its server is gone) and the empty DLC tab.
 - Deleting a mod no longer blocks the main thread, and scraped Workshop titles
   decode HTML entities.
