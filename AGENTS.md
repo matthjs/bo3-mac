@@ -83,8 +83,11 @@ generated and git-ignored, so edit `project.yml` and never the project file.
   keychain and fall back to ad-hoc signing otherwise. Ad-hoc is fine for local
   runs. Notarization requires the Developer ID on every binary, including the
   ones inside the tarball.
-- `./release.sh` archives, signs, notarizes (keychain profile `notarytool-profile`),
-  staples, and writes `build/BO3-Launcher.zip`. It's maintainer-only.
+- `./release.sh` archives a Release build and writes `build/BO3-Launcher.zip`.
+  With a Developer ID in the keychain it signs with it and notarizes (keychain
+  profile `notarytool-profile`). Without one it signs ad-hoc and skips
+  notarization, so players have to allow the app once under System Settings →
+  Privacy & Security. This fork's releases are ad-hoc.
 
 There are **no automated tests**. Verify by building, launching the game, and
 reading the shim log at `~/Library/Logs/bo3-rumble.log`.

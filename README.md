@@ -144,13 +144,22 @@ Steamworks libraries. You need to own and install the game yourself.
 
 ## Install
 
-1. Download `BO3Launcher.zip` and drag the app to **Applications**.
-2. Open it. If macOS asks for permission to read removable volumes, allow it:
+1. Download `BO3-Launcher.zip` from the
+   [latest release](https://github.com/matthjs/bo3-mac/releases/latest), unzip
+   it, and drag **BO3 Launcher** to **Applications**.
+2. Open it. The app isn't notarized by Apple, so the first time macOS says it
+   can't verify it. Click **Done**, open **System Settings → Privacy &
+   Security**, scroll down, and click **Open Anyway** next to BO3 Launcher.
+   You only need to do this once.
+3. If macOS asks for permission to read removable volumes, allow it:
    that is how the launcher finds a game installed on an external drive.
-3. If it doesn't find your game automatically, drag the game folder onto the
+4. If it doesn't find your game automatically, drag the game folder onto the
    drop zone. In Steam: right-click **Call of Duty: Black Ops III** →
    **Manage** → **Browse local files**.
-4. Click install when it offers to patch the game.
+5. Click install when it offers to patch the game.
+6. Always start the game from the launcher, or turn on Steam integration
+   (Options) so Steam's Play button opens the launcher. Starting it straight
+   from Steam runs the game without BO3MacFix.
 
 ## Building from source
 
