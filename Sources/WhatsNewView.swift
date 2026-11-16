@@ -104,34 +104,31 @@ struct WhatsNewView: View {
     }
 
     private var changelogCard: some View {
-        ZStack(alignment: .topLeading) {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(Theme.orange)
+                Text(GameLauncher.gameVersion)
+                    .font(.system(size: 14, weight: .heavy))
+                    .foregroundColor(Theme.textPrimary)
+            }
+
+            changelogItem("Workshop maps show their preview images")
+            changelogItem("No more stutter on big custom maps")
+            changelogItem("One-click Wine install for custom maps")
+            changelogItem("Steam's Play button can start the game directly")
+        }
+        .padding(16)
+        // Sized to its list; the cards below take the rest of the panel.
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
             LinearGradient(
                 colors: [Color(red: 0.25, green: 0.20, blue: 0.12), Color(red: 0.15, green: 0.12, blue: 0.08)],
                 startPoint: .topTrailing,
                 endPoint: .bottomLeading
             )
-
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(Theme.orange)
-                        Text(GameLauncher.gameVersion)
-                            .font(.system(size: 14, weight: .heavy))
-                            .foregroundColor(Theme.textPrimary)
-                    }
-
-                    changelogItem("Workshop maps show their preview images")
-                    changelogItem("The launcher closes when you quit the game")
-                    changelogItem("No more stutter on big maps like Leviathan")
-                    changelogItem("One-click Wine install for custom maps")
-                    changelogItem("Steam's Play button can start the game directly")
-                }
-                .padding(16)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        )
     }
 
     private func changelogItem(_ text: String) -> some View {
@@ -176,10 +173,9 @@ struct WhatsNewView: View {
             }
             .padding(.horizontal, 20)
         }
-        // Fixed height so the changelog card above gets the rest of the
-        // panel. Split three ways, it was too short and cut off its list.
-        .frame(maxWidth: .infinity)
-        .frame(height: 116)
+        // The changelog card above is sized to its list, and the two cards
+        // share the rest of the panel.
+        .frame(maxWidth: .infinity, minHeight: 116, maxHeight: .infinity)
         .contentShape(Rectangle())
         .onTapGesture { if clickable { action() } }
         .onHover { h in
