@@ -170,7 +170,8 @@ installer menu, which is handy for testing outside the launcher.
   converter's output read to the end, reconversion when a map's navmesh hash
   changes) plus a few small memory and string bugs. It also caches the working
   directory in the `ASL_ToNativePath` hook (`getcwd` on every path took up to
-  a fifth of the file thread's time).
+  a fifth of the file thread's time) and refuses the TCP bind on port 25001,
+  so the Havok Visual Debugger server the Mac port leaves on never opens.
   Those fixes are worth offering upstream.
 - The launcher is not sandboxed (the entitlements are empty) and uses hardened
   runtime only in Release. The game is launched unhardened, which is what makes

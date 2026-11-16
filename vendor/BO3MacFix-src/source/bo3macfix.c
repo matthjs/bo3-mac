@@ -20,6 +20,9 @@
 #include <crt_externs.h>
 #include <CommonCrypto/CommonDigest.h>
 #include <os/lock.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 #include <CoreFoundation/CoreFoundation.h>
 #include <IOKit/hid/IOHIDDevice.h>
@@ -604,6 +607,31 @@ static int fchdir_new(int fd) {
     return ret;
 }
 DYLD_INTERPOSE(fchdir_new, fchdir);
+
+// The Mac port ships with Havok's Visual Debugger server turned on. While a
+// map is loaded it listens on TCP port 25001 on every network interface and
+// accepts anyone who connects. Nothing needs it, and the game has no setting
+// for it, so refuse that one bind. The debugger then runs without a server.
+// The game's own networking is UDP and uses other ports.
+#define HAVOK_VDB_PORT 25001
+static int bind_new(int fd, const struct sockaddr *addr, socklen_t len) {
+    in_port_t port = 0;
+    if (addr != NULL && addr->sa_family == AF_INET && len >= sizeof(struct sockaddr_in))
+        port = ((const struct sockaddr_in *)addr)->sin_port;
+    else if (addr != NULL && addr->sa_family == AF_INET6 && len >= sizeof(struct sockaddr_in6))
+        port = ((const struct sockaddr_in6 *)addr)->sin6_port;
+    if (ntohs(port) == HAVOK_VDB_PORT) {
+        int type = 0;
+        socklen_t type_len = sizeof(type);
+        if (getsockopt(fd, SOL_SOCKET, SO_TYPE, &type, &type_len) == 0 && type == SOCK_STREAM) {
+            printf("not starting the Havok Visual Debugger server on port %d\n", HAVOK_VDB_PORT);
+            errno = EADDRNOTAVAIL;
+            return -1;
+        }
+    }
+    return bind(fd, addr, len);
+}
+DYLD_INTERPOSE(bind_new, bind);
 
 #define EMUPATH_B "C:\\Emu\\AppAssets"
 #define EMUPATH_F "C:/Emu/AppAssets"
