@@ -239,7 +239,9 @@ struct HeaderView: View {
                 }
             }
             Divider()
-            if !MacFixInstaller.isInstalled {
+            // Only once the game is there, like the startup prompt. Before
+            // that, the item just led to a "Game Not Found" dialog.
+            if MacFixInstaller.isGamePresent && !MacFixInstaller.isInstalled {
                 Button("Install BO3MacFix...") {
                     MacFixInstaller.promptInstallIfNeeded()
                 }
