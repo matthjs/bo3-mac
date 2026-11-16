@@ -177,7 +177,10 @@ struct WhatsNewView: View {
             }
             .padding(.horizontal, 20)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Fixed height so the changelog card above gets the rest of the
+        // panel. Split three ways, it was too short and cut off its list.
+        .frame(maxWidth: .infinity)
+        .frame(height: 116)
         .contentShape(Rectangle())
         .onTapGesture { if clickable { action() } }
         .onHover { h in
