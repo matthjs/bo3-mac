@@ -56,6 +56,15 @@ and everything else injected into it is built for x86_64.
   map's navigation data with a Windows modding tool, which needs Wine. The
   launcher downloads a pinned, checksum-verified Wine build and sets it up, so
   you don't need Homebrew.
+- **No stutter on custom maps that stream lots of textures.** The game keeps
+  its texture streaming list in order with an insertion sort, which gets very
+  slow when many textures change priority at once. On big maps that stalled a
+  frame for about half a second, roughly once a second. The bundled BO3MacFix
+  stops the insertion sort once it runs too long and finishes with the game's
+  own quicksort. Tested on
+  [Leviathan](https://steamcommunity.com/sharedfiles/filedetails/?id=2112576356),
+  which went from a hitch every second to smooth play. Details in
+  [`docs/leviathan-stutter.md`](docs/leviathan-stutter.md).
 - **Workshop mod browser.** Lists every mod you're subscribed to, with sizes,
   thumbnails and descriptions pulled from Steam.
 - **Real uninstall.** Deleting a mod unsubscribes you on Steam first, then
