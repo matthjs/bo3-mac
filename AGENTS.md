@@ -99,6 +99,11 @@ generated and git-ignored, so edit `project.yml` and never the project file.
 There are **no automated tests**. Verify by building, launching the game, and
 reading the shim log at `~/Library/Logs/bo3-rumble.log`.
 
+`experiments/metalfx/` holds a prototype that replaces the render-resolution
+stretch with MetalFX, and a probe that logs one frame's Metal passes. They're
+built by their own `build.sh` and injected with `run-game.sh`, not shipped.
+Findings are in `docs/metalfx-upscaling.md`.
+
 ## Releasing / versioning
 
 This fork numbers its releases from 2.0.0, apart from redxam's 1.x, and the UI
