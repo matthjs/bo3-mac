@@ -9,6 +9,7 @@
 #include <mach-o/dyld.h>
 #include <mach-o/getsect.h>
 #include "dyld-interposing.h"
+#include "metalfx.h"
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/sysctl.h>
@@ -1120,6 +1121,8 @@ __attribute__((constructor)) static void dylib_main() {
     install_hook_LiveSteam_RunEveryFrame((void *)(game_base_address + ADDR_LiveSteam_RunEveryFrame));
     install_stream_sort_fix();
     install_intro_skip();
+    // MetalFX upscaling for the render resolution, and the LOD fix (metalfx.m)
+    metalfx_init();
     //install_hook_SDL_GameControllerInitMappings((void *)(game_base_address + ADDR_SDL_GameControllerInitMappings));
 
     // set up functions that we later call

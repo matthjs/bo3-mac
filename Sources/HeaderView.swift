@@ -8,6 +8,8 @@ struct HeaderView: View {
     @AppStorage(GameLauncher.friendsOnlyKey) private var friendsOnly = false
     @AppStorage(GameLauncher.steamPlayStartsGameKey) private var steamPlayStartsGame = false
     @AppStorage(GameLauncher.steamOverlayKey) private var steamOverlay = true
+    @AppStorage(GameLauncher.upscalerKey) private var upscaler = "spatial"
+    @AppStorage(GameLauncher.lodFixKey) private var lodFix = false
     /// The menu is built from view state, so a plain read of
     /// `GameLauncher.isSteamIntegrated` stayed stale after installing or
     /// removing integration until the launcher restarted.
@@ -273,6 +275,15 @@ struct HeaderView: View {
                 .help("Blocks in-game messages, such as invites, from players who aren't your Steam friends. Applies from the next launch.")
             Toggle("Steam Overlay", isOn: $steamOverlay)
                 .help("Loads Steam's in-game overlay (Shift+Tab). Not used for offline launches. Applies from the next launch.")
+            Divider()
+            Picker("Upscaling", selection: $upscaler) {
+                Text("MetalFX Spatial").tag("spatial")
+                Text("MetalFX Temporal").tag("temporal")
+                Text("Off (Game's Own)").tag("off")
+            }
+            .help("How the picture is scaled up when the game's render resolution is below 100%. F7 (fn+F7 on a Mac keyboard) switches it in game. Applies from the next launch.")
+            Toggle("LOD Fix", isOn: $lodFix)
+                .help("Below 100% render resolution the game draws coarser models; this keeps detail as at native resolution. F8 (fn+F8 on a Mac keyboard) switches it in game. Applies from the next launch.")
             Divider()
             if steamIntegrated {
                 Toggle("Steam's Play Starts the Game", isOn: $steamPlayStartsGame)

@@ -57,6 +57,27 @@ struct GameLauncher {
         set { UserDefaults.standard.set(newValue, forKey: friendsOnlyKey) }
     }
 
+    static let upscalerKey = "upscaler"
+
+    /// BO3MacFix's `BO3MACFIX_UPSCALER`: how the game's picture is scaled up
+    /// when its render resolution is below 100%. "spatial" (MetalFX spatial,
+    /// the default), "temporal" (MetalFX temporal, smoother but softer) or
+    /// "off" (the game's own stretch). F7 cycles it in game; this is what
+    /// each launch starts with.
+    static var upscaler: String {
+        let v = UserDefaults.standard.string(forKey: upscalerKey) ?? "spatial"
+        return ["off", "spatial", "temporal"].contains(v) ? v : "spatial"
+    }
+
+    static let lodFixKey = "lodFix"
+
+    /// BO3MacFix's `BO3MACFIX_LODFIX`: below 100% render resolution the game
+    /// picks coarser models, and the fix sets its LOD bias so detail matches
+    /// native, for about 5% FPS. Off by default; F8 toggles it in game.
+    static var lodFix: Bool {
+        UserDefaults.standard.object(forKey: lodFixKey) as? Bool ?? false
+    }
+
     static func launch() {
         guard MacFixInstaller.isGamePresent else {
             MacFixInstaller.promptInstallIfNeeded()
@@ -123,6 +144,8 @@ struct GameLauncher {
         if friendsOnlyMessages {
             env["BO3MACFIX_FRIENDSONLY"] = "1"
         }
+        env["BO3MACFIX_UPSCALER"] = upscaler
+        env["BO3MACFIX_LODFIX"] = lodFix ? "1" : "0"
         // The shim swaps every controller prompt to PlayStation unless this is
         // set, which showed PlayStation buttons to Xbox and Switch players.
         // Only keep the swap when a PlayStation controller is connected at

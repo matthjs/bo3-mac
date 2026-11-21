@@ -8,6 +8,7 @@ build/
 Resources/BO3MacFix.tar.gz
 vendor/BO3MacFix-src/BO3MacFix-upstream.tar
 vendor/BO3MacFix-src/BO3MacFix.dylib
+vendor/BO3MacFix-src/metalfx.o
 vendor/BO3MacFix-src/*.dSYM/
 
 # Compiled by the Xcode build phase

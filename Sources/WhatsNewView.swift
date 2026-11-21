@@ -114,11 +114,11 @@ struct WhatsNewView: View {
                     .foregroundColor(Theme.textPrimary)
             }
 
+            changelogItem("MetalFX upscaling, temporal or spatial")
+            changelogItem("Full model detail at lower render resolutions")
             changelogItem("Workshop maps show their preview images")
-            changelogItem("The game skips its startup intro videos")
             changelogItem("No more stutter on big custom maps")
             changelogItem("One-click Wine install for custom maps")
-            changelogItem("Steam's Play button can start the game directly")
         }
         .padding(16)
         // Sized to its list; the cards below take the rest of the panel.
