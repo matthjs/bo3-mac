@@ -46,7 +46,7 @@ extern uint64_t game_base_address;
 static pthread_mutex_t g_lock = PTHREAD_RECURSIVE_MUTEX_INITIALIZER;
 
 enum { MODE_OFF, MODE_SPATIAL, MODE_TEMPORAL };
-static int g_mode = MODE_SPATIAL;
+static int g_mode = MODE_TEMPORAL;
 static int g_lodFix = 0;
 
 static id<MTLTexture> g_backbuffer;     // texture ASL copies into the drawable
@@ -120,6 +120,19 @@ static id<MTLComputePipelineState> g_bloomPSO;
 // than at 90%). Its LOD bias dvars bring native detail back: -270 at 60%
 // matched; the r_lodScale* dvars have no effect in this build.
 static float g_lodApplied;              // value last given to the dvars
+
+// Sharpening after MetalFX temporal, which doesn't sharpen and looked softer
+// than spatial (which does). AMD's RCAS from FSR 1: a contrast-adaptive
+// 5-tap filter whose negative lobe is limited so it can't overshoot the
+// neighbourhood, which keeps halos down. Temporal writes into g_tOut, RCAS
+// writes the backbuffer, then the HUD draws on top unsharpened. F6 cycles the
+// strength; BO3MACFIX_SHARPEN = off | low | medium | high (default medium).
+enum { SHARP_OFF, SHARP_LOW, SHARP_MEDIUM, SHARP_HIGH };
+static const float k_sharpAmount[4] = { 0.0f, 0.35f, 0.65f, 1.0f };
+static int g_sharpen = SHARP_MEDIUM;
+static id<MTLTexture> g_tOut;
+static id<MTLComputePipelineState> g_rcasPSO;
+static int g_rcasBroken;
 
 // On-screen label after a shortcut, drawn into the drawable after the HUD.
 static id<MTLTexture> g_label;
@@ -248,12 +261,13 @@ static NSString *mode_label(void) {
 
 // ---- shortcuts
 
-// F7 cycles the upscaler, F8 toggles the LOD fix. On a Mac keyboard they're
-// fn+F7 / fn+F8 (plain F7/F8 are media keys, which never arrive as key
+// F6 cycles the temporal sharpening, F7 the upscaler, F8 toggles the LOD fix.
+// On a Mac keyboard they're fn+F6 / fn+F7 / fn+F8 (plain F7/F8 are media keys, which never arrive as key
 // events); on a PC keyboard just F7 / F8. No Ctrl, Shift, Option or Command:
 // Ctrl is crouch/prone and Shift sprint in BO3, and players use the other
 // two themselves. Both keys are unbound in the default controls (F9 and F10
 // are taken).
+#define KEY_F6 97
 #define KEY_F7 98
 #define KEY_F8 100
 
@@ -262,18 +276,33 @@ static void install_shortcuts(void) {
     // keys from NSEvents (SDL), so returning nil keeps the key from it.
     dispatch_async(dispatch_get_main_queue(), ^{
         id monitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown | NSEventMaskKeyUp handler:^NSEvent *(NSEvent *e) {
-            if (e.keyCode != KEY_F7 && e.keyCode != KEY_F8) return e;
+            if (e.keyCode != KEY_F6 && e.keyCode != KEY_F7 && e.keyCode != KEY_F8) return e;
             NSEventModifierFlags f = e.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask;
             if (f & (NSEventModifierFlagControl | NSEventModifierFlagShift | NSEventModifierFlagCommand | NSEventModifierFlagOption)) return e;
             if (e.type == NSEventTypeKeyUp) return nil; // swallow the release too
             if (e.keyCode == KEY_F7) {
                 if (!e.isARepeat) {
                     pthread_mutex_lock(&g_lock);
-                    g_mode = (g_mode + 1) % 3;
+                    // Temporal -> Spatial -> Off -> Temporal
+                    static const int next[3] = { [MODE_OFF] = MODE_TEMPORAL, [MODE_TEMPORAL] = MODE_SPATIAL, [MODE_SPATIAL] = MODE_OFF };
+                    g_mode = next[g_mode];
                     g_tReset = 1; g_bloomReset = 1;
                     pthread_mutex_unlock(&g_lock);
                     printf("[BO3MacFix] MetalFX %s\n", mode_name(g_mode));
                     show_label(mode_label());
+                }
+                return nil;
+            }
+            if (e.keyCode == KEY_F6) {
+                if (!e.isARepeat) {
+                    static NSString *names[4] = { @"Off", @"Low", @"Medium", @"High" };
+                    pthread_mutex_lock(&g_lock);
+                    g_sharpen = (g_sharpen + 1) % 4;
+                    int sh = g_sharpen, m = g_mode;
+                    pthread_mutex_unlock(&g_lock);
+                    NSString *t = [NSString stringWithFormat:@"Temporal sharpening: %@", names[sh]];
+                    if (m != MODE_TEMPORAL) t = [t stringByAppendingString:@"  (applies to MetalFX Temporal)"];
+                    show_label(t);
                 }
                 return nil;
             }
@@ -388,6 +417,68 @@ static int je_find(id enc) {
 static MTLViewport jittered(MTLViewport v) {
     v.originX += g_jx; v.originY += g_jy;
     return v;
+}
+
+// ---- sharpening (RCAS)
+
+static const char *k_rcasSrc =
+    "#include <metal_stdlib>\n"
+    "using namespace metal;\n"
+    "kernel void rcas(texture2d<float> src [[texture(0)]],\n"
+    "                 texture2d<float, access::write> dst [[texture(1)]],\n"
+    "                 constant float &amount [[buffer(0)]], uint2 gid [[thread_position_in_grid]]) {\n"
+    "    uint w = src.get_width(), h = src.get_height();\n"
+    "    if (gid.x >= w || gid.y >= h) return;\n"
+    "    uint2 n = uint2(gid.x, max(gid.y, 1u) - 1), s = uint2(gid.x, min(gid.y + 1, h - 1));\n"
+    "    uint2 we = uint2(max(gid.x, 1u) - 1, gid.y), ea = uint2(min(gid.x + 1, w - 1), gid.y);\n"
+    "    float4 c4 = src.read(gid);\n"
+    "    float3 b = src.read(n).rgb, d = src.read(we).rgb, e = c4.rgb, f = src.read(ea).rgb, hh = src.read(s).rgb;\n"
+    "    float3 mn4 = min(min(b, d), min(f, hh)), mx4 = max(max(b, d), max(f, hh));\n"
+    "    // The strongest negative lobe that keeps the result inside the\n"
+    "    // neighbourhood's range (no overshoot), per channel.\n"
+    "    float3 hitMin = min(mn4, e) / (4.0 * max(mx4, 1e-5));\n"
+    "    float3 hitMax = (1.0 - max(mx4, e)) / min(4.0 * mn4 - 4.0, -1e-5);\n"
+    "    float3 lobe3 = max(-hitMin, hitMax);\n"
+    "    float lobe = max(-0.1875, min(max(lobe3.r, max(lobe3.g, lobe3.b)), 0.0)) * amount;\n"
+    "    float3 o = (lobe * (b + d + f + hh) + e) / (4.0 * lobe + 1.0);\n"
+    "    dst.write(float4(saturate(o), c4.a), gid);\n"
+    "}\n";
+
+// Temporal output texture for RCAS to read: the backbuffer's size and
+// format, with the usage MetalFX wants for an output.
+static id<MTLTexture> ensure_tout(id<MTLDevice> dev, id<MTLTexture> bb) {
+    if (g_tOut && g_tOut.width == bb.width && g_tOut.height == bb.height && g_tOut.pixelFormat == bb.pixelFormat) return g_tOut;
+    [g_tOut release];
+    MTLTextureDescriptor *td = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:bb.pixelFormat width:bb.width height:bb.height mipmapped:NO];
+    td.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
+    td.storageMode = MTLStorageModePrivate;
+    g_tOut = [dev newTextureWithDescriptor:td];
+    return g_tOut;
+}
+
+static BOOL ensure_rcas(id<MTLDevice> dev) {
+    if (g_rcasPSO) return YES;
+    if (g_rcasBroken) return NO;
+    NSError *err = nil;
+    id<MTLLibrary> lib = [dev newLibraryWithSource:[NSString stringWithUTF8String:k_rcasSrc] options:nil error:&err];
+    id<MTLFunction> fn = [lib newFunctionWithName:@"rcas"];
+    g_rcasPSO = fn ? [dev newComputePipelineStateWithFunction:fn error:&err] : nil;
+    [fn release]; [lib release];
+    if (!g_rcasPSO) {
+        printf("[BO3MacFix] MetalFX sharpening failed: %s\n", err ? err.localizedDescription.UTF8String : "?");
+        g_rcasBroken = 1;
+    }
+    return g_rcasPSO != nil;
+}
+
+static void encode_rcas(id<MTLCommandBuffer> cb, id<MTLTexture> src, id<MTLTexture> dst, float amount) {
+    id<MTLComputeCommandEncoder> ce = [cb computeCommandEncoder];
+    [ce setComputePipelineState:g_rcasPSO];
+    [ce setTexture:src atIndex:0];
+    [ce setTexture:dst atIndex:1];
+    [ce setBytes:&amount length:sizeof amount atIndex:0];
+    [ce dispatchThreads:MTLSizeMake(dst.width, dst.height, 1) threadsPerThreadgroup:MTLSizeMake(16, 16, 1)];
+    [ce endEncoding];
 }
 
 // ---- bloom stabiliser
@@ -777,10 +868,14 @@ HOOK(rend, void) {
         // match its size.
         if (g_jitterOn && g_tscaler && g_tIW == g_inter.width && g_tIH == g_inter.height &&
             g_vel.width == g_inter.width && g_sceneDepth.width == g_inter.width) {
+            // With sharpening, temporal writes an intermediate and RCAS the
+            // backbuffer; otherwise temporal writes the backbuffer directly.
+            id<MTLDevice> dev = [bb device];
+            BOOL sharpen = g_sharpen != SHARP_OFF && ensure_rcas(dev) && ensure_tout(dev, bb);
             g_tscaler.colorTexture = g_inter;
             g_tscaler.depthTexture = g_sceneDepth;
             g_tscaler.motionTexture = g_vel;
-            g_tscaler.outputTexture = bb;
+            g_tscaler.outputTexture = sharpen ? g_tOut : bb;
             g_tscaler.inputContentWidth = g_inter.width;
             g_tscaler.inputContentHeight = g_inter.height;
             g_tscaler.jitterOffsetX = g_jx;
@@ -791,6 +886,7 @@ HOOK(rend, void) {
             g_tscaler.reset = g_tReset;
             g_tReset = 0;
             [g_tscaler encodeToCommandBuffer:g_rCb];
+            if (sharpen) encode_rcas(g_rCb, g_tOut, bb, k_sharpAmount[g_sharpen]);
             done = YES;
         }
     }
@@ -815,13 +911,11 @@ static BOOL swz(Class c, SEL s, IMP repl, IMP *orig) {
 }
 #define SWZ(cls, sel, name) ok &= swz(cls, @selector(sel), (IMP)repl_##name, (IMP *)&orig_##name)
 
-// Spatial by default: temporal looked softer to the player (it doesn't
-// sharpen, and the jitter is limited to 0.35), so it's opt-in for now.
 static int parse_mode(const char *s) {
-    if (!s) return MODE_SPATIAL;
+    if (!s) return MODE_TEMPORAL;
     if (!strcasecmp(s, "off")) return MODE_OFF;
-    if (!strcasecmp(s, "temporal")) return MODE_TEMPORAL;
-    return MODE_SPATIAL;
+    if (!strcasecmp(s, "spatial")) return MODE_SPATIAL;
+    return MODE_TEMPORAL;
 }
 
 void metalfx_init(void) {
@@ -829,6 +923,13 @@ void metalfx_init(void) {
     // Off unless asked for: it costs about 5% FPS.
     g_lodFix = lod && (!strcmp(lod, "1") || !strcasecmp(lod, "true"));
     g_mode = parse_mode(getenv("BO3MACFIX_UPSCALER"));
+    const char *sh = getenv("BO3MACFIX_SHARPEN");
+    if (sh) {
+        if (!strcasecmp(sh, "off")) g_sharpen = SHARP_OFF;
+        else if (!strcasecmp(sh, "low")) g_sharpen = SHARP_LOW;
+        else if (!strcasecmp(sh, "high")) g_sharpen = SHARP_HIGH;
+        else g_sharpen = SHARP_MEDIUM;
+    }
     @autoreleasepool {
         id<MTLDevice> dev = MTLCreateSystemDefaultDevice();
         if (!dev || !NSClassFromString(@"MTLFXSpatialScalerDescriptor") || ![MTLFXSpatialScalerDescriptor supportsDevice:dev]) {
@@ -881,6 +982,6 @@ void metalfx_init(void) {
             return;
         }
         install_shortcuts();
-        printf("[BO3MacFix] MetalFX %s, LOD fix %s (F7 / F8)\n", mode_name(g_mode), g_lodFix ? "on" : "off");
+        printf("[BO3MacFix] MetalFX %s, sharpening %d, LOD fix %s (F7 / F6 / F8)\n", mode_name(g_mode), g_sharpen, g_lodFix ? "on" : "off");
     }
 }

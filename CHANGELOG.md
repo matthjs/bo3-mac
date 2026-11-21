@@ -6,7 +6,7 @@ BO3MacFix:
 
 - MetalFX upscaling. When the render resolution is below 100%, the game used
   to stretch its smaller picture with bilinear filtering; now Apple's MetalFX
-  scales it, spatial (the default) or temporal. The game draws the stretch as
+  scales it, temporal (the default) or spatial. The game draws the stretch as
   one full-screen draw that also tone maps; `metalfx.m` redirects that pass
   into an intermediate at render size, so the game's shader still runs 1:1,
   then encodes MetalFX into the backbuffer before the HUD, which stays at
@@ -16,7 +16,10 @@ BO3MacFix:
   larger offsets made a lens flare on Ascension vanish for single frames).
   It also biases texture mip selection to the output resolution (sampler
   `lodBias`, macOS 26+) and stabilises the bloom inputs, which the game
-  computes from the jittered frame. All through swizzled Metal methods, no
+  computes from the jittered frame. MetalFX temporal doesn't sharpen and
+  looked softer than spatial, so its output goes through AMD's RCAS
+  (contrast-adaptive sharpening from FSR 1) before the HUD; medium strength
+  by default. All through swizzled Metal methods, no
   game code is patched. No measurable GPU cost on an M5 Pro; about 5% more
   CPU for temporal.
 - LOD fix. The game chooses model detail by on-screen size, so at 60% render
@@ -24,15 +27,16 @@ BO3MacFix:
   game's `r_lodBiasRigid` and `r_lodBiasSkinned` dvars from the render
   resolution (-270 at 60%, 0 at 100%), which restores native detail for
   about 5% FPS. Off by default. `r_lodScale*` has no effect in this build.
-- In game, F7 cycles the upscaler (spatial, temporal, off) and F8 toggles the
-  LOD fix; on a Mac keyboard that's fn+F7 / fn+F8. A label shows the new
+- In game, F7 cycles the upscaler (temporal, spatial, off), F6 the temporal
+  sharpening (off, low, medium, high) and F8 toggles the LOD fix; on a Mac
+  keyboard that's fn+F7 / fn+F6 / fn+F8. A label shows the new
   setting for a few seconds. Both keys are unbound in BO3's default controls,
   and they don't reach the game. No modifier keys: Ctrl is prone and Shift
   sprint.
 
 Launcher:
 
-- Options → Upscaling (MetalFX Spatial, MetalFX Temporal, Off) and LOD Fix,
+- Options → Upscaling (MetalFX Temporal, MetalFX Spatial, Off) and LOD Fix,
   passed to BO3MacFix as `BO3MACFIX_UPSCALER` and `BO3MACFIX_LODFIX`.
 
 ## 2.0.2 (build 10) - 2026-11-17

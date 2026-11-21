@@ -157,7 +157,9 @@ connected at launch), `DS_MENU_PROBE` (log requested asset names),
 `DS_DUMP_LUA`, `DS_NO_AUDIO_FOLLOW`. BO3MacFix reads `BO3MACFIX_OFFLINE`,
 `BO3MACFIX_PLAYERNAME`, `BO3MACFIX_NETWORKPASSWORD`, `BO3MACFIX_FRIENDSONLY`,
 `BO3MACFIX_WINEPATH`, `BO3MACFIX_UPSCALER` (`off`, `spatial`, `temporal`) and
-`BO3MACFIX_LODFIX` (`1` to start with it on). Defaults: spatial, LOD fix off.
+`BO3MACFIX_LODFIX` (`1` to start with it on) and `BO3MACFIX_SHARPEN` (`off`,
+`low`, `medium`, `high`; temporal only). Defaults: temporal, medium, LOD fix
+off. The launcher doesn't set the sharpening yet.
 
 `rumble-shim/play-with-rumble.command` runs the shim through upstream's own
 installer menu, which is handy for testing outside the launcher.

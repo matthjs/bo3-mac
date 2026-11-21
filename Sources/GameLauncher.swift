@@ -60,13 +60,13 @@ struct GameLauncher {
     static let upscalerKey = "upscaler"
 
     /// BO3MacFix's `BO3MACFIX_UPSCALER`: how the game's picture is scaled up
-    /// when its render resolution is below 100%. "spatial" (MetalFX spatial,
-    /// the default), "temporal" (MetalFX temporal, smoother but softer) or
-    /// "off" (the game's own stretch). F7 cycles it in game; this is what
+    /// when its render resolution is below 100%. "temporal" (MetalFX
+    /// temporal, the default: calmer, less shimmer), "spatial" (MetalFX
+    /// spatial: sharper) or "off" (the game's own stretch). F7 cycles it in game; this is what
     /// each launch starts with.
     static var upscaler: String {
-        let v = UserDefaults.standard.string(forKey: upscalerKey) ?? "spatial"
-        return ["off", "spatial", "temporal"].contains(v) ? v : "spatial"
+        let v = UserDefaults.standard.string(forKey: upscalerKey) ?? "temporal"
+        return ["off", "spatial", "temporal"].contains(v) ? v : "temporal"
     }
 
     static let lodFixKey = "lodFix"

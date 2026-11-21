@@ -116,6 +116,15 @@ with its history, reprojected with the motion vectors. It was on in the
 configuration that tested clean. `RG11B10Float` has no read-write access on
 Apple GPUs, so the kernel writes a history texture and a blit copies it back.
 
+**Sharpening.** MetalFX temporal doesn't sharpen, and next to spatial
+(which does) it looked softer. Its output now goes to an intermediate, and
+AMD's RCAS from FSR 1 writes the backbuffer before the HUD: a 5-tap filter
+whose negative lobe is limited by the neighbourhood's range (and to 0.1875),
+which keeps halos down. Strengths: low 0.35, medium 0.65 (default), high 1.0;
+FSR's own default is about 0.87 on that scale. Anti-aliasing is best set to
+None with temporal: SMAA before it removes sub-pixel detail the temporal pass
+would use.
+
 Cost, standing still at 60% with a 120 FPS cap: GPU 72% in off, spatial and
 temporal alike; CPU 377% off, 379% spatial, 397% temporal (the per-draw hooks).
 
@@ -151,8 +160,9 @@ a ratio, so it can't match a resolution change exactly at every distance.
 ## Controls
 
 The launcher passes `BO3MACFIX_UPSCALER` (`temporal`, `spatial`, `off`) and
-`BO3MACFIX_LODFIX`. In game, F7 cycles the upscaler and F8 toggles the LOD
-fix (fn+F7 / fn+F8 on a Mac keyboard, where plain F7/F8 are media keys).
+`BO3MACFIX_LODFIX`; `BO3MACFIX_SHARPEN` sets the temporal sharpening. In
+game, F7 cycles the upscaler, F6 the sharpening and F8 toggles the LOD fix
+(fn+F7 / fn+F6 / fn+F8 on a Mac keyboard, where plain F-keys are media keys).
 Both are unbound in BO3's default controls; modifier combinations were ruled
 out because Ctrl is prone and Shift sprint. They're caught with a local `NSEvent`
 monitor, which keeps them from the game, and a label is blitted into the

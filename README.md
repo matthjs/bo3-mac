@@ -87,10 +87,10 @@ friends-only message filter, branding). This fork adds:
 
 - **MetalFX upscaling.** Below 100% render resolution the game stretched its
   smaller picture with plain bilinear filtering, which looks soft. BO3MacFix
-  hands that step to Apple's MetalFX instead: **spatial** (the default), which
-  rebuilds and sharpens edges within one frame, or **temporal**, which
-  combines several frames using the game's motion vectors and depth: calmer,
-  with less shimmer, but softer. The game's own tone
+  hands that step to Apple's MetalFX instead: **temporal** (the default), which
+  combines several frames using the game's motion vectors and depth for a
+  calmer picture with less shimmer, then sharpens it; or **spatial**, which
+  rebuilds and sharpens edges within one frame. The game's own tone
   mapping still runs, and the HUD stays at full resolution. It holds up well
   down to about 60% render resolution, which frees a lot of GPU time. Details
   in [`docs/metalfx-upscaling.md`](docs/metalfx-upscaling.md).
@@ -98,8 +98,9 @@ friends-only message filter, branding). This fork adds:
   detail by on-screen size, so below 100% it drew coarser models, which popped
   in sooner. The LOD fix (off by default, about 5% FPS) sets the game's LOD
   bias from the render resolution so detail matches native.
-- **In-game shortcuts:** F7 cycles the upscaler (spatial, temporal, off) and
-  F8 toggles the LOD fix. On a Mac keyboard hold fn (fn+F7, fn+F8).
+- **In-game shortcuts:** F7 cycles the upscaler (temporal, spatial, off), F6
+  the temporal sharpening (off, low, medium, high), and F8 toggles the LOD fix.
+  On a Mac keyboard hold fn (fn+F7, fn+F6, fn+F8).
 - **No stutter on custom maps that stream lots of textures.** The game keeps
   its texture streaming list in order with an insertion sort, which gets very
   slow when many textures change priority at once. On big maps that stalled a

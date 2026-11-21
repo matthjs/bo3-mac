@@ -8,7 +8,7 @@ struct HeaderView: View {
     @AppStorage(GameLauncher.friendsOnlyKey) private var friendsOnly = false
     @AppStorage(GameLauncher.steamPlayStartsGameKey) private var steamPlayStartsGame = false
     @AppStorage(GameLauncher.steamOverlayKey) private var steamOverlay = true
-    @AppStorage(GameLauncher.upscalerKey) private var upscaler = "spatial"
+    @AppStorage(GameLauncher.upscalerKey) private var upscaler = "temporal"
     @AppStorage(GameLauncher.lodFixKey) private var lodFix = false
     /// The menu is built from view state, so a plain read of
     /// `GameLauncher.isSteamIntegrated` stayed stale after installing or
@@ -277,8 +277,8 @@ struct HeaderView: View {
                 .help("Loads Steam's in-game overlay (Shift+Tab). Not used for offline launches. Applies from the next launch.")
             Divider()
             Picker("Upscaling", selection: $upscaler) {
-                Text("MetalFX Spatial").tag("spatial")
                 Text("MetalFX Temporal").tag("temporal")
+                Text("MetalFX Spatial").tag("spatial")
                 Text("Off (Game's Own)").tag("off")
             }
             .help("How the picture is scaled up when the game's render resolution is below 100%. F7 (fn+F7 on a Mac keyboard) switches it in game. Applies from the next launch.")
