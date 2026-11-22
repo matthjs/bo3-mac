@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.1.0 (build 11) - 2026-11-21
+## 2.1.0 (build 11) - 2026-11-22
 
 BO3MacFix:
 
