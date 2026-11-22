@@ -99,10 +99,11 @@ generated and git-ignored, so edit `project.yml` and never the project file.
 There are **no automated tests**. Verify by building, launching the game, and
 reading the shim log at `~/Library/Logs/bo3-rumble.log`.
 
-`experiments/metalfx/` holds a prototype that replaces the render-resolution
-stretch with MetalFX, and a probe that logs one frame's Metal passes. They're
-built by their own `build.sh` and injected with `run-game.sh`, not shipped.
-Findings are in `docs/metalfx-upscaling.md`.
+`tools/metal-probe/` holds a frame probe that logs one frame's Metal passes
+(with shader names), and can dump frames, motion vectors and depth for
+offline analysis (`mvanalyze.py`). It's built by its own `build.sh` and
+injected with `run-game.sh`, not shipped. It's how the frame structure that
+`metalfx.m` relies on was found; see `docs/metalfx-upscaling.md`.
 
 ## Releasing / versioning
 
@@ -155,7 +156,10 @@ Debug env vars, set in the game's environment: `DS_PAD_ORDER`, `DS_XBOX_GLYPHS`
 connected at launch), `DS_MENU_PROBE` (log requested asset names),
 `DS_DUMP_LUA`, `DS_NO_AUDIO_FOLLOW`. BO3MacFix reads `BO3MACFIX_OFFLINE`,
 `BO3MACFIX_PLAYERNAME`, `BO3MACFIX_NETWORKPASSWORD`, `BO3MACFIX_FRIENDSONLY`,
-and `BO3MACFIX_WINEPATH`.
+`BO3MACFIX_WINEPATH`, `BO3MACFIX_UPSCALER` (`off`, `spatial`, `temporal`) and
+`BO3MACFIX_LODFIX` (`1` to start with it on) and `BO3MACFIX_SHARPEN` (`off`,
+`low`, `medium`, `high`; temporal only). Defaults: temporal, medium, LOD fix
+off. The launcher doesn't set the sharpening yet.
 
 `rumble-shim/play-with-rumble.command` runs the shim through upstream's own
 installer menu, which is handy for testing outside the launcher.
@@ -201,6 +205,19 @@ installer menu, which is handy for testing outside the launcher.
   intro (Activision/Treyarch and Aspyr logos) by taking the branch the game
   takes when its intro dvar is off. Like every patch, these hooks check
   the expected bytes first. Those fixes are worth offering upstream.
+- **MetalFX upscaling and the LOD fix** live in `source/metalfx.m`, built for
+  macOS 14 on its own (the rest of BO3MacFix targets 10.13) with MetalFX
+  weakly linked. It patches no game code: it swizzles the Metal driver's
+  command buffer, encoder, device and blit classes. It redirects the one
+  tone-map draw that stretches the render-size image into the backbuffer, so
+  the game's shader runs 1:1 into an intermediate, then encodes MetalFX before
+  the HUD. Temporal jitters scene passes through the viewport (Halton at 0.35
+  of full size, so within +-0.18 px, advanced on the render thread at the end
+  of the frame, never at present) and passes the game's motion vectors at scale -20. Don't raise the
+  jitter amplitude without checking lights on Ascension, and don't move the
+  jitter update to `presentDrawable:`; the reasons are in the file and in
+  `docs/metalfx-upscaling.md`. The LOD fix calls `Dvar_SetFromStringByName`
+  on the main thread after checking its first bytes.
 - The launcher is not sandboxed (the entitlements are empty) and uses hardened
   runtime only in Release. The game is launched unhardened, which is what makes
   `DYLD_INSERT_LIBRARIES` work.

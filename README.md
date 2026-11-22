@@ -85,6 +85,22 @@ These come from redxam's original launcher.
 The bundled BO3MacFix is upstream's plus redxam's changes (offline mode, the
 friends-only message filter, branding). This fork adds:
 
+- **MetalFX upscaling.** Below 100% render resolution the game stretched its
+  smaller picture with plain bilinear filtering, which looks soft. BO3MacFix
+  hands that step to Apple's MetalFX instead: **temporal** (the default), which
+  combines several frames using the game's motion vectors and depth for a
+  calmer picture with less shimmer, then sharpens it; or **spatial**, which
+  rebuilds and sharpens edges within one frame. The game's own tone
+  mapping still runs, and the HUD stays at full resolution. It holds up well
+  down to about 60% render resolution, which frees a lot of GPU time. Details
+  in [`docs/metalfx-upscaling.md`](docs/metalfx-upscaling.md).
+- **Full model detail at lower render resolutions.** The game picks model
+  detail by on-screen size, so below 100% it drew coarser models, which popped
+  in sooner. The LOD fix (off by default, about 5% FPS) sets the game's LOD
+  bias from the render resolution so detail matches native.
+- **In-game shortcuts:** F7 cycles the upscaler (temporal, spatial, off), F6
+  the temporal sharpening (off, low, medium, high), and F8 toggles the LOD fix.
+  On a Mac keyboard hold fn (fn+F7, fn+F6, fn+F8).
 - **No stutter on custom maps that stream lots of textures.** The game keeps
   its texture streaming list in order with an insertion sort, which gets very
   slow when many textures change priority at once. On big maps that stalled a
@@ -115,6 +131,8 @@ friends-only message filter, branding). This fork adds:
 
 ### In the launcher
 
+- **Upscaling and LOD Fix options** in Options, which set what each game
+  starts with.
 - **One-click Wine install for custom maps.** BO3MacFix converts each custom
   map's navigation data with a Windows modding tool, which needs Wine. The
   launcher downloads a pinned, checksum-verified Wine build and sets it up, so

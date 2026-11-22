@@ -1,6 +1,6 @@
 #!/bin/zsh
 # Launch BO3 the way the launcher does, plus extra injected dylibs:
-#   EXTRA="$PWD/build/mfxup.dylib" ./run-game.sh   (absolute paths)
+#   EXTRA="$PWD/build/frameprobe.dylib" ./run-game.sh   (absolute paths)
 # Steam must be running. Output (including the dylibs' logs) goes to stdout.
 R="$HOME/Library/Application Support/Steam/steamapps/common/Call of Duty Black Ops III"
 OV="$HOME/Library/Application Support/Steam/Steam.AppBundle/Steam/Contents/MacOS/gameoverlayrenderer.dylib"
